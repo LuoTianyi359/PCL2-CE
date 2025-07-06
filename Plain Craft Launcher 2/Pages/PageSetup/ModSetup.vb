@@ -79,6 +79,7 @@ Public Class ModSetup
         {"LaunchArgumentWindowWidth", New SetupEntry(854)},
         {"LaunchArgumentWindowHeight", New SetupEntry(480)},
         {"LaunchArgumentWindowType", New SetupEntry(1)},
+        {"LaunchPreferredIpStack", New SetupEntry(0, Source:=SetupSource.Registry)},
         {"LaunchArgumentRam", New SetupEntry(False, Source:=SetupSource.Registry)},
         {"LaunchAdvanceJvm", New SetupEntry("-XX:+UseG1GC -XX:-UseAdaptiveSizePolicy -XX:-OmitStackTraceInFastThrow -Djdk.lang.Process.allowAmbiguousCommands=true -Dfml.ignoreInvalidMinecraftCertificates=True -Dfml.ignorePatchDiscrepancies=True -Dlog4j2.formatMsgNoLookups=true")},
         {"LaunchAdvanceGame", New SetupEntry("")},
@@ -89,9 +90,18 @@ Public Class ModSetup
         {"LaunchAdvanceGraphicCard", New SetupEntry(True, Source:=SetupSource.Registry)},
         {"LaunchRamType", New SetupEntry(0)},
         {"LaunchRamCustom", New SetupEntry(15)},
+        {"LaunchUuid", New SetupEntry(String.Empty, Source:=SetupSource.Registry)},
         {"ToolFixAuthlib", New SetupEntry(True, Source:=SetupSource.Registry)},
         {"LinkEula", New SetupEntry(False, Source:=SetupSource.Registry)},
-        {"LinkName", New SetupEntry("", Source:=SetupSource.Registry)},
+        {"LinkLastTestDate", New SetupEntry("", Source:=SetupSource.Registry, Encoded:=True)},
+        {"LinkAvailable", New SetupEntry(False, Source:=SetupSource.Registry, Encoded:=True)},
+        {"LinkAnnounceCache", New SetupEntry("", Source:=SetupSource.Registry, Encoded:=True)},
+        {"LinkAnnounceCacheVer", New SetupEntry(0, Source:=SetupSource.Registry)},
+        {"LinkRelayType", New SetupEntry(0, Source:=SetupSource.Registry)},
+        {"LinkServerType", New SetupEntry(0, Source:=SetupSource.Registry)},
+        {"LinkRelayServer", New SetupEntry("", Source:=SetupSource.Registry)},
+        {"LinkNaidRefreshToken", New SetupEntry("", Source:=SetupSource.Registry, Encoded:=True)},
+        {"LinkNaidRefreshExpiresAt", New SetupEntry("", Source:=SetupSource.Registry, Encoded:=True)},
         {"LinkFirstTimeNetTest", New SetupEntry(True, Source:=SetupSource.Registry)},
         {"LoginLegacyName", New SetupEntry("", Source:=SetupSource.Registry, Encoded:=True)},
         {"LoginMsJson", New SetupEntry("{}", Source:=SetupSource.Registry, Encoded:=True)}, '{UserName: OAuthToken, ...}
@@ -135,6 +145,9 @@ Public Class ModSetup
         {"UiCustomPreset", New SetupEntry(0)},
         {"UiCustomNet", New SetupEntry("")},
         {"UiDarkMode", New SetupEntry(2, Source:=SetupSource.Registry)},
+        {"UiDarkColor", New SetupEntry(1, Source:=SetupSource.Registry)},
+        {"UiLightColor", New SetupEntry(1, Source:=SetupSource.Registry)},
+        {"UiLockWindowSize", New SetupEntry(False, Source:=SetupSource.Registry)},
         {"UiLogoType", New SetupEntry(1)},
         {"UiLogoText", New SetupEntry("")},
         {"UiLogoLeft", New SetupEntry(False)},
@@ -153,7 +166,6 @@ Public Class ModSetup
         {"UiHiddenFunctionHidden", New SetupEntry(False)},
         {"UiHiddenSetupLaunch", New SetupEntry(False)},
         {"UiHiddenSetupUi", New SetupEntry(False)},
-        {"UiHiddenSetupLink", New SetupEntry(False)},
         {"UiHiddenSetupSystem", New SetupEntry(False)},
         {"UiHiddenOtherHelp", New SetupEntry(False)},
         {"UiHiddenOtherFeedback", New SetupEntry(False)},
@@ -167,6 +179,7 @@ Public Class ModSetup
         {"UiHiddenVersionMod", New SetupEntry(False)},
         {"UiHiddenVersionResourcePack", New SetupEntry(False)},
         {"UiHiddenVersionShader", New SetupEntry(False)},
+        {"UiHiddenVersionSchematic", New SetupEntry(False)},
         {"UiAniFPS", New SetupEntry(59, Source:=SetupSource.Registry)},
         {"UiFont", New SetupEntry("")},
         {"VersionAdvanceJvm", New SetupEntry("", Source:=SetupSource.Version)},
@@ -509,8 +522,6 @@ Public Class ModSetup
 #If RELEASE Or BETA Then
         If Key = "UiLauncherTheme" Then Return "0"
 #End If
-        If Key = "UiHiddenPageLink" Then Return False
-        If Key = "UiHiddenSetupLink" Then Return False
         Return Nothing
     End Function
 
@@ -582,6 +593,14 @@ Public Class ModSetup
     End Sub
     Public Sub UiBackgroundColorful(Value As Boolean)
         ThemeRefresh()
+    End Sub
+
+    Public Sub UiLockWindowSize(Value As Boolean)
+        If Value Then
+            FrmMain.RemoveResizer()
+        Else
+            FrmMain.AddResizer()
+        End If
     End Sub
 
     '背景图片
@@ -693,7 +712,7 @@ Public Class ModSetup
                 FrmSetupUI.HintCustomWarn.Visibility = If(Setup.Get("HintCustomWarn"), Visibility.Collapsed, Visibility.Visible)
                 FrmSetupUI.HintCustom.Text = $"从指定网址联网获取主页内容。服主也可以用于动态更新服务器公告。{vbCrLf}如果你制作了稳定运行的联网主页，可以点击这条提示投稿，若合格即可加入预设！"
                 FrmSetupUI.HintCustom.EventType = "打开网页"
-                FrmSetupUI.HintCustom.EventData = "https://github.com/Hex-Dragon/PCL2/discussions/2528"
+                FrmSetupUI.HintCustom.EventData = "https://github.com/Meloong-Git/PCL/discussions/2528"
             Case 3 '预设
                 FrmSetupUI.PanCustomPreset.Visibility = Visibility.Visible
                 FrmSetupUI.PanCustomLocal.Visibility = Visibility.Collapsed
@@ -815,9 +834,6 @@ Public Class ModSetup
     Public Sub UiHiddenSetupUi(Value As Boolean)
         PageSetupUI.HiddenRefresh()
     End Sub
-    Public Sub UiHiddenSetupLink(Value As Boolean)
-        PageSetupUI.HiddenRefresh()
-    End Sub
     Public Sub UiHiddenSetupSystem(Value As Boolean)
         PageSetupUI.HiddenRefresh()
     End Sub
@@ -855,6 +871,9 @@ Public Class ModSetup
         PageSetupUI.HiddenRefresh()
     End Sub
     Public Sub UiHiddenVersionShader(Value As Boolean)
+        PageSetupUI.HiddenRefresh()
+    End Sub
+    Public Sub UiHiddenVersionSchematic(Value As Boolean)
         PageSetupUI.HiddenRefresh()
     End Sub
 

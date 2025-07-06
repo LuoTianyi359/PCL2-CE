@@ -1,8 +1,11 @@
 Imports System.ComponentModel
 Imports System.Runtime.InteropServices
-
 Imports System.Net.Http
 Imports System.Threading.Tasks
+
+Imports LiteDB
+Imports CacheCow.Client
+Imports CacheCow.Common
 
 Public Module ModNet
     Public Const NetDownloadEnd As String = ".PCLDownloading"
@@ -40,6 +43,7 @@ Public Module ModNet
     Private _PreviousProxyLink As String
     Private _httpClient As HttpClient
     Private _httpClientHandler As HttpClientHandler
+    Private _httpCache As New NetCache
     Public Function GetHttpClient() As HttpClient
         If Setup.Get("SystemHttpProxy") <> _PreviousProxyLink Then
             _httpClient?.Dispose()
@@ -60,16 +64,114 @@ Public Module ModNet
                                          _httpClientHandler = New HttpClientHandler() With {
                                             .Proxy = GetProxy(),
                                             .MaxConnectionsPerServer = 1024,
-                                            .AutomaticDecompression = DecompressionMethods.GZip,
+                                            .AutomaticDecompression = DecompressionMethods.GZip Or DecompressionMethods.Deflate,
                                             .AllowAutoRedirect = True,
                                             .UseCookies = True,
                                             .CookieContainer = New CookieContainer()
                                         }
-                                         _httpClient = New HttpClient(_httpClientHandler)
+                                         _httpClient = ClientExtensions.CreateClient(_httpCache, _httpClientHandler)
                                      End Sub)
         End If
         Return _httpInitTask
     End Function
+
+    Public Class NetCache
+        Implements ICacheStore, IDisposable
+
+        Sub New()
+            _netCacheDatabase = New LiteDatabase($"Filename={PathTemp}Cache\NetCache.db")
+        End Sub
+
+        Private _netCacheDatabase As LiteDatabase
+        Private disposedValue As Boolean
+
+        Private Class KeyData
+            Public Property ID As String
+            Public Property Data As Byte() ' 修改为可序列化类型
+        End Class
+
+        Public Async Function GetValueAsync(key As CacheKey) As Task(Of HttpResponseMessage) Implements ICacheStore.GetValueAsync
+            Try
+                'Log($"[NetCache] 尝试获取缓存 {key.ResourceUri}:{key.HashBase64}", LogLevel.Debug)
+                Dim entries = _netCacheDatabase.GetCollection(Of KeyData)("Cache")
+                Dim cached = entries.FindById(New BsonValue(GetDatabaseIdByCacheKey(key)))?.Data
+
+                If cached Is Nothing Then Return Nothing
+                Log($"[NetCache] 击中缓存 {key.ResourceUri}:{key.HashBase64}")
+                Dim seContent As New MemoryStream(cached)
+                Return Await New MessageContentHttpMessageSerializer().DeserializeToResponseAsync(seContent)
+            Catch ex As Exception
+                Log(ex, $"[NetCache] 获取 {key.ResourceUri}:{key.HashBase64} 缓存信息失败")
+                Throw
+            End Try
+        End Function
+
+        Public Async Function AddOrUpdateAsync(key As CacheKey, response As HttpResponseMessage) As Task Implements ICacheStore.AddOrUpdateAsync
+            Try
+                If response Is Nothing Then Return
+                Log($"[NetCache] 已更新 {key.ResourceUri}:{key.HashBase64} 的缓存")
+                Dim entries = _netCacheDatabase.GetCollection(Of KeyData)("Cache")
+
+                Dim content As New MemoryStream()
+                Await New MessageContentHttpMessageSerializer().SerializeAsync(response, content)
+                Dim indexId = GetDatabaseIdByCacheKey(key)
+                Dim target = New KeyData() With {.ID = indexId, .Data = content.ToArray()}
+
+                Dim quRes = entries.FindById(New BsonValue(indexId))
+                If quRes Is Nothing Then
+                    entries.Insert(target)
+                Else
+                    entries.Update(target)
+                End If
+            Catch ex As Exception
+                Log(ex, $"[NetCache] 更新 {key.ResourceUri}:{key.HashBase64} 缓存信息失败")
+                Throw
+            End Try
+        End Function
+
+        Public Async Function TryRemoveAsync(key As CacheKey) As Task(Of Boolean) Implements ICacheStore.TryRemoveAsync
+            Try
+                Log($"[NetCache] 已移除 {key.ResourceUri}:{key.HashBase64} 的缓存")
+                Dim entries = _netCacheDatabase.GetCollection(Of KeyData)("Cache")
+                Return entries.Delete(New BsonValue(GetDatabaseIdByCacheKey(key)))
+            Catch ex As Exception
+                Log(ex, $"[NetCache] 移除 {key.ResourceUri}:{key.HashBase64} 缓存信息失败")
+                Throw
+            End Try
+        End Function
+
+        Public Async Function ClearAsync() As Task Implements ICacheStore.ClearAsync
+            Try
+                Log($"[NetCache] 缓存已清空")
+                Dim entries = _netCacheDatabase.GetCollection(Of KeyData)("Cache")
+                entries.DeleteAll()
+            Catch ex As Exception
+                Log(ex, $"[NetCache] 清空缓存信息失败")
+                Throw
+            End Try
+        End Function
+
+        Private Function GetDatabaseIdByCacheKey(key As CacheKey) As String
+            Return Core.Helper.Hash.SHA256Provider.Instance.ComputeHash(key.HashBase64 & key.ResourceUri)
+        End Function
+
+        Protected Overridable Sub Dispose(disposing As Boolean)
+            If Not disposedValue Then
+                If disposing Then
+                    _netCacheDatabase.Dispose()
+                End If
+
+                _netCacheDatabase = Nothing
+                disposedValue = True
+            End If
+        End Sub
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            ' 不要更改此代码。请将清理代码放入“Dispose(disposing As Boolean)”方法中
+            Dispose(disposing:=True)
+            GC.SuppressFinalize(Me)
+        End Sub
+    End Class
 
     ''' <summary>
     ''' 测试 Ping。失败则返回 -1。
@@ -482,46 +584,6 @@ Retry:
         End Try
     End Function
     ''' <summary>
-    ''' 同时发送多个网络请求并要求返回内容。
-    ''' </summary>
-    Public Function NetRequestMultiple(Url As String, Method As String, Data As Object, ContentType As String, Optional RequestCount As Integer = 4, Optional Headers As Dictionary(Of String, String) = Nothing, Optional MakeLog As Boolean = True)
-        Dim Threads As New List(Of Thread)
-        Dim RequestResult = Nothing
-        Dim RequestEx As Exception = Nothing
-        Dim FailCount As Integer = 0
-        For i = 1 To RequestCount
-            Dim th As New Thread(
-            Sub()
-                Try
-                    RequestResult = NetRequestOnce(Url, Method, Data, ContentType, 30000, Headers, MakeLog)
-                Catch ex As Exception
-                    FailCount += 1
-                    RequestEx = ex
-                End Try
-            End Sub)
-            th.Start()
-            Threads.Add(th)
-            Thread.Sleep(i * 250)
-            If RequestResult IsNot Nothing Then GoTo RequestFinished
-        Next
-        Do While True
-            If RequestResult IsNot Nothing Then
-RequestFinished:
-                For Each th In Threads
-                    If th.IsAlive Then th.Interrupt()
-                Next
-                Return RequestResult
-            ElseIf FailCount = RequestCount Then
-                For Each th In Threads
-                    If th.IsAlive Then th.Interrupt()
-                Next
-                Throw RequestEx
-            End If
-            Thread.Sleep(20)
-        Loop
-        Throw New Exception("未知错误")
-    End Function
-    ''' <summary>
     ''' 发送一次网络请求并获取返回内容。
     ''' </summary>
     Public Function NetRequestOnce(Url As String, Method As String, Data As Object, ContentType As String, Optional Timeout As Integer = 25000, Optional Headers As Dictionary(Of String, String) = Nothing, Optional MakeLog As Boolean = True, Optional UseBrowserUserAgent As Boolean = False) As String
@@ -552,6 +614,8 @@ RequestFinished:
                                 request.Content = New ByteArrayContent(Data)
                             ElseIf TypeOf Data Is String Then
                                 request.Content = New StringContent(Data, Encoding.UTF8, ContentType)
+                            ElseIf Data.GetType().IsSubclassOf(GetType(HttpContent)) Then
+                                request.Content = CType(Data, HttpContent)
                             Else
                                 Throw New ArgumentException("Data 参数类型不支持")
                             End If
@@ -830,6 +894,7 @@ RequestFinished:
         Public Source As NetSource
 
     End Class
+
     ''' <summary>
     ''' 下载单个文件。
     ''' </summary>
