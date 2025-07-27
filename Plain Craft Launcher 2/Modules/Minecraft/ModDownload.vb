@@ -3,21 +3,21 @@
 #Region "DlClient* | Minecraft 客户端"
 
     ''' <summary>
-    ''' 返回某 Minecraft 版本对应的原版主 Jar 文件的下载信息，要求对应依赖版本已存在。
+    ''' 返回某 Minecraft 版本对应的原版主 Jar 文件的下载信息，要求对应依赖实例已存在。
     ''' 失败则抛出异常，不需要下载则返回 Nothing。
     ''' </summary>
-    Public Function DlClientJarGet(Version As McVersion, ReturnNothingOnFileUseable As Boolean) As NetFile
-        '获取底层继承版本
+    Public Function DlClientJarGet(Version As McInstance, ReturnNothingOnFileUseable As Boolean) As NetFile
+        '获取底层继承实例
         Try
-            Do While Not String.IsNullOrEmpty(Version.InheritVersion)
-                Version = New McVersion(Version.InheritVersion)
+            Do While Not String.IsNullOrEmpty(Version.InheritInstance)
+                Version = New McInstance(Version.InheritInstance)
             Loop
         Catch ex As Exception
-            Log(ex, "获取底层继承版本失败")
+            Log(ex, "获取底层继承实例失败")
         End Try
         '检查 Json 是否标准
         If Version.JsonObject("downloads") Is Nothing OrElse Version.JsonObject("downloads")("client") Is Nothing OrElse Version.JsonObject("downloads")("client")("url") Is Nothing Then
-            Throw New Exception("底层版本 " & Version.Name & " 中无 Jar 文件下载信息")
+            Throw New Exception("底层实例 " & Version.Name & " 中无 Jar 文件下载信息")
         End If
         '检查文件
         Dim Checker As New FileChecker(MinSize:=1024, ActualSize:=If(Version.JsonObject("downloads")("client")("size"), -1), Hash:=Version.JsonObject("downloads")("client")("sha1"))
@@ -28,18 +28,18 @@
     End Function
 
     ''' <summary>
-    ''' 返回某 Minecraft 版本对应的原版主 AssetIndex 文件的下载信息，要求对应依赖版本已存在。
+    ''' 返回某 Minecraft 版本对应的原版主 AssetIndex 文件的下载信息，要求对应依赖实例已存在。
     ''' 若未找到，则会返回 Legacy 资源文件或 Nothing。
     ''' </summary>
-    Public Function DlClientAssetIndexGet(Version As McVersion) As NetFile
-        '获取底层继承版本
-        Do While Not String.IsNullOrEmpty(Version.InheritVersion)
-            Version = New McVersion(Version.InheritVersion)
+    Public Function DlClientAssetIndexGet(Version As McInstance) As NetFile
+        '获取底层继承实例
+        Do While Not String.IsNullOrEmpty(Version.InheritInstance)
+            Version = New McInstance(Version.InheritInstance)
         Loop
         '获取信息
         Dim IndexInfo = McAssetsGetIndex(Version, True, True)
         Dim IndexAddress As String = PathMcFolder & "assets\indexes\" & IndexInfo("id").ToString & ".json"
-        Log("[Download] 版本 " & Version.Name & " 对应的资源文件索引为 " & IndexInfo("id").ToString)
+        Log("[Download] 实例 " & Version.Name & " 对应的资源文件索引为 " & IndexInfo("id").ToString)
         Dim IndexUrl As String = If(IndexInfo("url"), "")
         If IndexUrl = "" Then
             Return Nothing
@@ -51,7 +51,7 @@
     ''' <summary>
     ''' 构造补全某 Minecraft 版本的所有文件的加载器列表。失败会抛出异常。
     ''' </summary>
-    Public Function DlClientFix(Version As McVersion, CheckAssetsHash As Boolean, AssetsIndexBehaviour As AssetsIndexExistsBehaviour) As List(Of LoaderBase)
+    Public Function DlClientFix(Version As McInstance, CheckAssetsHash As Boolean, AssetsIndexBehaviour As AssetsIndexExistsBehaviour) As List(Of LoaderBase)
         Dim Loaders As New List(Of LoaderBase)
 
 #Region "下载支持库文件"
@@ -260,7 +260,7 @@
             Dim CacheFilePath As String = PathTemp & "Cache\uvmc-download.json"
             If Not File.Exists(CacheFilePath) Then
                 Try
-                    Dim UnlistedJson As JObject = NetGetCodeByRequestRetry("https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main/version_manifest.json", IsJson:=True)
+                    Dim UnlistedJson As JObject = NetGetCodeByRequestRetry("https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT/version_manifest.json", IsJson:=True)
                     File.WriteAllText(CacheFilePath, UnlistedJson.ToString())
                 Catch ex As Exception
                     Log("[Download] 未列出的版本镜像源下载失败: " & ex.Message)
@@ -1411,11 +1411,11 @@
     ''' 对可能涉及 Mod 镜像源的请求进行处理。
     ''' 调用 NetRequest，会进行重试。
     ''' </summary>
-    Public Function DlModRequest(Url As String, Method As String, Data As String, ContentType As String) As String
+    Public Function DlModRequest(Url As String, Method As String, Data As String, ContentType As String, Optional allowMirror As Boolean = False) As String
         Dim Urls As New List(Of KeyValuePair(Of String, Integer))
         Dim McimUrl As String = DlSourceModGet(Url)
         If McimUrl <> Url Then
-            Select Case Setup.Get("ToolDownloadMod")
+            Select Case If(allowMirror, Setup.Get("ToolDownloadMod"), 2)
                 Case 0
                     Urls.Add(New KeyValuePair(Of String, Integer)(McimUrl, 5))
                     Urls.Add(New KeyValuePair(Of String, Integer)(McimUrl, 10))
@@ -1502,12 +1502,12 @@
                     Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/maven").
                     Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/maven").
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main"),
+                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT"),
                 Original.
                     Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
                     Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main")
+                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT")
             }
         Else
             Return DlSourceOrder(
@@ -1516,12 +1516,12 @@
                     Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/maven").
                     Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/maven").
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main"),
+                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT"),
                 Original.
                     Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
                     Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
                     Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main"),
+                    Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT"),
                 Original
             })
         End If
@@ -1539,18 +1539,48 @@
                 Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com").
                 Replace("https://launcher.mojang.com", "https://bmclapi2.bangbang93.com").
                 Replace("https://launchermeta.mojang.com", "https://bmclapi2.bangbang93.com").
-                Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://raw.gitcode.com/zkitefly/unlisted-versions-of-minecraft/raw/main"),
+                Replace("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/unlisted-versions-of-minecraft/CT"),
             Original
         })
     End Function
 
-    'Mod 下载源
+    ''' <summary>
+    ''' Mod Api 镜像源
+    ''' </summary>
+    ''' <param name="Original"></param>
+    ''' <returns></returns>
     Public Function DlSourceModGet(Original As String) As String
         Return Original.
                 Replace("https://api.modrinth.com", "https://mod.mcimirror.top/modrinth").
                 Replace("https://api.curseforge.com", "https://mod.mcimirror.top/curseforge")
     End Function
-
+    ''' <summary>
+    ''' Mod 下载镜像源
+    ''' </summary>
+    ''' <param name="original"></param>
+    ''' <returns></returns>
+    Public Function DlSourceModDownloadGet(original As String) As List(Of String)
+        Dim res As New List(Of String)
+        Dim mirrorDl = original.
+                Replace("https://cdn.modrinth.com", "https://mod.mcimirror.top"). 'like https://cdn.modrinth.com/data/P7dR8mSH/versions/X2hTodix/fabric-api-0.129.0%2B1.21.8.jar
+                Replace("https://edge.forgecdn.net", "https://mod.mcimirror.top") 'like https://edge.forgecdn.net/files/6767/951/jei-1.21.5-neoforge-21.4.0.27.jar
+        Select Case Setup.Get("ToolDownloadMod")
+            Case 0 '镜像源
+                res.Add(mirrorDl)
+                res.Add(mirrorDl)
+            Case 1 '平衡
+                res.Add(original)
+                res.Add(mirrorDl)
+            Case 2 '官方源
+                res.Add(original)
+                res.Add(original)
+            Case Else '错误
+                Setup.Reset("ToolDownloadMod")
+                res.Add(original)
+        End Select
+        res.Add(original)
+        Return res
+    End Function
     'Loader 自动切换
     Private Sub DlSourceLoader(Of InputType, OutputType)(MainLoader As LoaderTask(Of InputType, OutputType),
                                                          LoaderList As List(Of KeyValuePair(Of LoaderTask(Of InputType, OutputType), Integer)),
@@ -1621,6 +1651,67 @@
             If Loader.Key.State = LoadState.Loading Then Loader.Key.Abort()
         Next
     End Sub
+
+#End Region
+
+#Region "DlLegacyFabricList | LegacyFabric 列表"
+
+    Public Structure DlLegacyFabricListResult
+        ''' <summary>
+        ''' 数据来源名称，如“Official”，“BMCLAPI”。
+        ''' </summary>
+        Public SourceName As String
+        ''' <summary>
+        ''' 是否为官方的实时数据。
+        ''' </summary>
+        Public IsOfficial As Boolean
+        ''' <summary>
+        ''' 获取到的数据。
+        ''' </summary>
+        Public Value As JObject
+    End Structure
+
+    ''' <summary>
+    ''' LegacyFabric 列表，主加载器。
+    ''' </summary>
+    Public DlLegacyFabricListLoader As New LoaderTask(Of Integer, DlLegacyFabricListResult)("DlLegacyFabricList Main", AddressOf DlLegacyFabricListMain)
+    Private Sub DlLegacyFabricListMain(Loader As LoaderTask(Of Integer, DlLegacyFabricListResult))
+        Select Case Setup.Get("ToolDownloadVersion")
+            Case 0
+                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)) From {
+                    New KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)(DlLegacyFabricListOfficialLoader, 30)
+                }, Loader.IsForceRestarting)
+            Case 1
+                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)) From {
+                    New KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)(DlLegacyFabricListOfficialLoader, 5)
+                }, Loader.IsForceRestarting)
+            Case Else
+                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)) From {
+                    New KeyValuePair(Of LoaderTask(Of Integer, DlLegacyFabricListResult), Integer)(DlLegacyFabricListOfficialLoader, 60)
+                }, Loader.IsForceRestarting)
+        End Select
+    End Sub
+
+    ''' <summary>
+    ''' LegacyFabric 列表，官方源。
+    ''' </summary>
+    Public DlLegacyFabricListOfficialLoader As New LoaderTask(Of Integer, DlLegacyFabricListResult)("DlLegacyFabricList Official", AddressOf DlLegacyFabricListOfficialMain)
+    Private Sub DlLegacyFabricListOfficialMain(Loader As LoaderTask(Of Integer, DlLegacyFabricListResult))
+        Dim Result As JObject = NetGetCodeByRequestRetry("https://meta.legacyfabric.net/v2/versions", IsJson:=True)
+        Try
+            Dim Output = New DlLegacyFabricListResult With {.IsOfficial = True, .SourceName = "LegacyFabric 官方源", .Value = Result}
+            If Output.Value("game") Is Nothing OrElse Output.Value("loader") Is Nothing OrElse Output.Value("installer") Is Nothing Then Throw New Exception("获取到的列表缺乏必要项")
+            Loader.Output = Output
+        Catch ex As Exception
+            Throw New Exception("LegacyFabric 官方源版本列表解析失败（" & Result.ToString & "）", ex)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Legacy Fabric API 列表，官方源。
+    ''' </summary>
+    Public DlLegacyFabricApiLoader As New LoaderTask(Of Integer, List(Of CompFile))("Legacy Fabric API List Loader",
+        Sub(Task As LoaderTask(Of Integer, List(Of CompFile))) Task.Output = CompFilesGet("legacy-fabric-api", False))
 
 #End Region
 

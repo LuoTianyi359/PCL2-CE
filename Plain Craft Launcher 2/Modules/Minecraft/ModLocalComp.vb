@@ -1214,113 +1214,116 @@ Finished:
         Public Function GetLogo() As String
             If Comp IsNot Nothing AndAlso Comp.LogoUrl IsNot Nothing Then Return Comp.LogoUrl
             If Logo IsNot Nothing Then Return Logo
+            
+            ' 为文件夹设置特定图标
+            If IsFolder Then
+                Return "pack://application:,,,/images/Icons/Folder.png"
+            End If
+            
             Return PathImage & "Icons/NoIcon.png"
         End Function
+
+#Region "Litematic 文件处理"
 
         ''' <summary>
         ''' 读取 Litematic 文件的 NBT 数据。
         ''' </summary>
         Private Sub LoadLitematicNbtData()
             Try
-                Log($"开始读取 NBT 数据：{Path}", LogLevel.Debug)
+                Log($"开始读取 Litematic NBT 数据：{Path}", LogLevel.Debug)
                 Using reader As NbtReader = VbNbtReaderCreator.FromPath(Path, True)
                     Dim rootTag As XElement = reader.ReadNbtAsXml(NbtType.TCompound)
-                    Log($"成功解析 NBT 根节点", LogLevel.Debug)
+                    Log($"成功解析 Litematic NBT 根节点", LogLevel.Debug)
 
-                    ' 输出完整的 NBT 结构用于调试
-                    ' Log($"NBT 结构：{rootTag.ToString()}", LogLevel.Developer)
-
+                    ' 读取版本信息
+                    Dim versionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='Version']")
+                    If versionTag IsNot Nothing Then
+                        _litematicVersion = CInt(versionTag.Value)
+                    End If
+                    
                     ' 读取 Metadata 节点
                     Dim metadataTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']")
                     If metadataTag IsNot Nothing Then
-                        Log($"找到 Metadata 节点", LogLevel.Debug)
+                        Log($"找到 Litematic Metadata 节点", LogLevel.Debug)
+                        
+                        ' 读取名称
+                        Dim nameTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Name']")
+                        If nameTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(nameTag.Value) AndAlso nameTag.Value <> "Unnamed" Then
+                            _litematicOriginalName = nameTag.Value
+                        End If
+                        
+                        ' 读取描述信息
+                        Dim descriptionTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Description']")
+                        If descriptionTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(descriptionTag.Value) Then
+                            _Description = descriptionTag.Value
+                        End If
+                        
+                        ' 读取作者信息
+                        Dim authorTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Author']")
+                        If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
+                            _Authors = authorTag.Value
+                        End If
+                        
                         ' 读取时间信息
-                        Dim timeCreatedTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TInt64[@Name='TimeCreated']")
+                        Dim timeCreatedTag As XElement = metadataTag.XPathSelectElement(".//TInt64[@Name='TimeCreated']")
                         If timeCreatedTag IsNot Nothing Then
                             _litematicTimeCreated = CLng(timeCreatedTag.Value)
                         End If
                         
-                        Dim timeModifiedTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TInt64[@Name='TimeModified']")
+                        Dim timeModifiedTag As XElement = metadataTag.XPathSelectElement(".//TInt64[@Name='TimeModified']")
                         If timeModifiedTag IsNot Nothing Then
                             _litematicTimeModified = CLng(timeModifiedTag.Value)
                         End If
                         
                         ' 读取包围盒大小
-                        Dim enclosingSizeTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TCompound[@Name='EnclosingSize']")
+                        Dim enclosingSizeTag As XElement = metadataTag.XPathSelectElement(".//TCompound[@Name='EnclosingSize']")
                         If enclosingSizeTag IsNot Nothing Then
-                            Dim xTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TCompound[@Name='EnclosingSize']/TInt32[@Name='x']")
-                            Dim yTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TCompound[@Name='EnclosingSize']/TInt32[@Name='y']")
-                            Dim zTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TCompound[@Name='EnclosingSize']/TInt32[@Name='z']")
+                            Dim xTag As XElement = enclosingSizeTag.XPathSelectElement(".//TInt32[@Name='x']")
+                            Dim yTag As XElement = enclosingSizeTag.XPathSelectElement(".//TInt32[@Name='y']")
+                            Dim zTag As XElement = enclosingSizeTag.XPathSelectElement(".//TInt32[@Name='z']")
                             If xTag IsNot Nothing AndAlso yTag IsNot Nothing AndAlso zTag IsNot Nothing Then
                                 _litematicEnclosingSize = $"{xTag.Value} × {yTag.Value} × {zTag.Value}"
                             End If
                         End If
                         
-                        ' 读取描述信息
-                        Dim descriptionTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TString[@Name='Description']")
-                        If descriptionTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(descriptionTag.Value) Then
-                            _Description = descriptionTag.Value
-                        End If
-                        
                         ' 读取区域数量
-                        Dim regionCountTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TInt32[@Name='RegionCount']")
+                        Dim regionCountTag As XElement = metadataTag.XPathSelectElement(".//TInt32[@Name='RegionCount']")
                         If regionCountTag IsNot Nothing Then
                             _litematicRegionCount = CInt(regionCountTag.Value)
                         End If
                         
                         ' 读取总方块数
-                        Dim totalBlocksTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TInt32[@Name='TotalBlocks']")
+                        Dim totalBlocksTag As XElement = metadataTag.XPathSelectElement(".//TInt32[@Name='TotalBlocks']")
                         If totalBlocksTag IsNot Nothing Then
                             _litematicTotalBlocks = CInt(totalBlocksTag.Value)
                         End If
-
-                    ' 读取数据版本信息
-                    Dim dataVersionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='DataVersion']")
-                    If dataVersionTag IsNot Nothing Then
-                        _structureDataVersion = CInt(dataVersionTag.Value)
-                    End If
-                    
-                    ' 读取作者信息
-                        Dim authorTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TString[@Name='Author']")
-                        If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
-                            _Authors = authorTag.Value
-                        End If
                         
                         ' 读取总体积
-                        Dim totalVolumeTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TInt32[@Name='TotalVolume']")
+                        Dim totalVolumeTag As XElement = metadataTag.XPathSelectElement(".//TInt32[@Name='TotalVolume']")
                         If totalVolumeTag IsNot Nothing Then
                             _litematicTotalVolume = CInt(totalVolumeTag.Value)
                         End If
-                        
-                        ' 读取名称
-                        Dim nameTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']/TString[@Name='Name']")
-                        If nameTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(nameTag.Value) AndAlso nameTag.Value <> "Unnamed" Then
-                            _litematicOriginalName = nameTag.Value
-                        End If
-                        
-                        ' 读取版本信息
-                        Dim versionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='Version']")
-                        If versionTag IsNot Nothing Then
-                            _litematicVersion = CInt(versionTag.Value)
-                        End If
-                        
-                        Log($"NBT 数据读取完成", LogLevel.Debug)
                     Else
-                        Log($"未找到 Metadata 节点", LogLevel.Debug)
+                        Log($"未找到 Litematic Metadata 节点", LogLevel.Debug)
                     End If
+                    
+                    Log($"Litematic NBT 数据读取完成", LogLevel.Debug)
                 End Using
             Catch ex As Exception
-                ' 如果读取失败，记录日志但不影响基本功能
                 Log(ex, "读取 Litematic NBT 数据时出错（" & Path & "）", LogLevel.Debug)
             End Try
         End Sub
+
+#End Region
+
+#Region "Schem 文件处理"
 
         ''' <summary>
         ''' 读取 .schem 文件的 NBT 数据（Sponge Schematic 格式）。
         ''' </summary>
         Private Sub LoadSchemNbtData()
             Try
-                Log($"开始读取 NBT 数据：{Path}", LogLevel.Debug)
+                Log($"开始读取 Schem NBT 数据：{Path}", LogLevel.Debug)
                 ' 尝试不同的压缩方式读取
                 Dim rootTag As XElement = Nothing
                 Dim success As Boolean = False
@@ -1331,88 +1334,84 @@ Finished:
                     Using reader As NbtReader = VbNbtReaderCreator.FromPathAutoDetect(Path, _compressed)
                         rootTag = reader.ReadNbtAsXml(NbtType.TCompound)
                         success = True
-                        Log($"成功解析 NBT 根节点（自动检测格式）", LogLevel.Debug)
+                        Log($"成功解析 Schem NBT 根节点（自动检测格式）", LogLevel.Debug)
                     End Using
                 Catch ex As Exception
-                    Log($"NBT 数据读取失败：{ex.Message}", LogLevel.Debug)
+                    Log($"Schem NBT 数据读取失败：{ex.Message}", LogLevel.Debug)
                     Return
                 End Try
                 
                 If Not success OrElse rootTag Is Nothing Then
-                    Log($"无法读取 NBT 数据", LogLevel.Debug)
+                    Log($"无法读取 Schem NBT 数据", LogLevel.Debug)
                     Return
                 End If
 
-                    ' 读取Sponge版本信息
-                    Dim versionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='Version']")
-                    If versionTag IsNot Nothing Then
-                        _spongeVersion = CInt(versionTag.Value)
+                ' 读取Sponge版本信息
+                Dim versionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='Version']")
+                If versionTag IsNot Nothing Then
+                    _spongeVersion = CInt(versionTag.Value)
+                End If
+                
+                ' 读取数据版本信息
+                Dim dataVersionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='DataVersion']")
+                If dataVersionTag IsNot Nothing Then
+                    _structureDataVersion = CInt(dataVersionTag.Value)
+                End If
+                
+                ' 读取尺寸信息
+                Dim widthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Width']")
+                Dim heightTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Height']")
+                Dim lengthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Length']")
+                If widthTag IsNot Nothing AndAlso heightTag IsNot Nothing AndAlso lengthTag IsNot Nothing Then
+                    Dim width As Integer = CInt(widthTag.Value)
+                    Dim height As Integer = CInt(heightTag.Value)
+                    Dim length As Integer = CInt(lengthTag.Value)
+                    _litematicEnclosingSize = $"{width} × {height} × {length}"
+                    _litematicTotalVolume = width * height * length
+                    
+                    ' 对于Sponge格式，方块数量等于总体积（因为包含空气方块）
+                    _litematicTotalBlocks = _litematicTotalVolume
+                End If
+                
+                ' 读取调色板信息来计算区域数量
+                Dim paletteTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Palette']")
+                If paletteTag IsNot Nothing Then
+                    _litematicRegionCount = 1 ' Sponge Schematic 通常只有一个区域
+                End If
+
+                ' 读取元数据
+                Dim metadataTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']")
+                If metadataTag IsNot Nothing Then
+                    ' 读取名称
+                    Dim nameTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Name']")
+                    If nameTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(nameTag.Value) Then
+                        _schemOriginalName = nameTag.Value
                     End If
                     
-                    ' 读取尺寸信息
-                    Dim widthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Width']")
-                    Dim heightTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Height']")
-                    Dim lengthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Length']")
-                    If widthTag IsNot Nothing AndAlso heightTag IsNot Nothing AndAlso lengthTag IsNot Nothing Then
-                        Dim width As Integer = CInt(widthTag.Value)
-                        Dim height As Integer = CInt(heightTag.Value)
-                        Dim length As Integer = CInt(lengthTag.Value)
-                        _litematicEnclosingSize = $"{width} × {height} × {length}"
-                        
-                        ' 计算总体积
-                        _litematicTotalVolume = width * height * length
-                        
+                    ' 读取作者信息
+                    Dim authorTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Author']")
+                    If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
+                        _structureAuthor = authorTag.Value
+                        If _Authors Is Nothing Then _Authors = _structureAuthor
                     End If
+                End If
 
-                    ' 读取数据版本信息
-                    Dim dataVersionTag As XElement = rootTag.XPathSelectElement("//TInt32[@Name='DataVersion']")
-                    If dataVersionTag IsNot Nothing Then
-                        _structureDataVersion = CInt(dataVersionTag.Value)
-                    End If
-                    
-                    ' 读取方块数据来计算方块数量
-                    Dim blockDataTag As XElement = rootTag.XPathSelectElement("//TByteArray[@Name='BlockData']")
-                    If blockDataTag IsNot Nothing AndAlso _LitematicTotalVolume.HasValue Then
-                        ' 对于Sponge格式，方块数量等于总体积（因为包含空气方块）
-                        _litematicTotalBlocks = _LitematicTotalVolume.Value
-                    End If
-                    
-                    ' 读取调色板信息来计算区域数量
-                    Dim paletteTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Palette']")
-                    If paletteTag IsNot Nothing Then
-                        _litematicRegionCount = 1 ' Sponge Schematic 通常只有一个区域
-                    End If
-
-                    ' 读取元数据
-                    Dim metadataTag As XElement = rootTag.XPathSelectElement("//TCompound[@Name='Metadata']")
-                    If metadataTag IsNot Nothing Then
-                        ' 读取名称
-                        Dim nameTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Name']")
-                        If nameTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(nameTag.Value) Then
-                            _schemOriginalName = nameTag.Value
-                        End If
-                        
-                        ' 读取作者信息
-                        Dim authorTag As XElement = metadataTag.XPathSelectElement(".//TString[@Name='Author']")
-                        If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
-                            _structureAuthor = authorTag.Value
-                            If _Authors Is Nothing Then _Authors = _structureAuthor
-                        End If
-
-                    End If
-
-                    Log($"NBT 数据读取完成", LogLevel.Debug)
+                Log($"Schem NBT 数据读取完成", LogLevel.Debug)
             Catch ex As Exception
                 Log(ex, "读取 Schem NBT 数据时出错（" & Path & "）", LogLevel.Debug)
             End Try
         End Sub
+
+#End Region
+
+#Region "Schematic 文件处理"
 
         ''' <summary>
         ''' 读取 .schematic 文件的 NBT 数据（MCEdit/WorldEdit 格式）。
         ''' </summary>
         Private Sub LoadSchematicNbtData()
             Try
-                Log($"开始读取 NBT 数据：{Path}", LogLevel.Debug)
+                Log($"开始读取 Schematic NBT 数据：{Path}", LogLevel.Debug)
                 ' 尝试不同的压缩方式读取
                 Dim rootTag As XElement = Nothing
                 Dim success As Boolean = False
@@ -1423,45 +1422,49 @@ Finished:
                     Using reader As NbtReader = VbNbtReaderCreator.FromPathAutoDetect(Path, _compressed)
                         rootTag = reader.ReadNbtAsXml(NbtType.TCompound)
                         success = True
-                        Log($"成功解析 NBT 根节点（自动检测格式）", LogLevel.Debug)
+                        Log($"成功解析 Schematic NBT 根节点（自动检测格式）", LogLevel.Debug)
                     End Using
                 Catch ex As Exception
-                    Log($"NBT 数据读取失败：{ex.Message}", LogLevel.Debug)
+                    Log($"Schematic NBT 数据读取失败：{ex.Message}", LogLevel.Debug)
                     Return
                 End Try
                 
                 If Not success OrElse rootTag Is Nothing Then
-                    Log($"无法读取 NBT 数据", LogLevel.Debug)
+                    Log($"无法读取 Schematic NBT 数据", LogLevel.Debug)
                     Return
                 End If
 
-                    ' 读取尺寸信息
-                    Dim widthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Width']")
-                    Dim heightTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Height']")
-                    Dim lengthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Length']")
-                    If widthTag IsNot Nothing AndAlso heightTag IsNot Nothing AndAlso lengthTag IsNot Nothing Then
-                        _litematicEnclosingSize = $"{widthTag.Value} × {heightTag.Value} × {lengthTag.Value}"
-                        _litematicTotalVolume = CInt(widthTag.Value) * CInt(heightTag.Value) * CInt(lengthTag.Value)
-                    End If
+                ' 读取尺寸信息
+                Dim widthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Width']")
+                Dim heightTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Height']")
+                Dim lengthTag As XElement = rootTag.XPathSelectElement("//TInt16[@Name='Length']")
+                If widthTag IsNot Nothing AndAlso heightTag IsNot Nothing AndAlso lengthTag IsNot Nothing Then
+                    _litematicEnclosingSize = $"{widthTag.Value} × {heightTag.Value} × {lengthTag.Value}"
+                    _litematicTotalVolume = CInt(widthTag.Value) * CInt(heightTag.Value) * CInt(lengthTag.Value)
+                End If
 
-                    ' 读取材料列表
-                    Dim materialsTag As XElement = rootTag.XPathSelectElement("//TString[@Name='Materials']")
-                    If materialsTag IsNot Nothing Then
-                        Log($"材料类型：{materialsTag.Value}", LogLevel.Debug)
-                    End If
+                ' 读取材料列表
+                Dim materialsTag As XElement = rootTag.XPathSelectElement("//TString[@Name='Materials']")
+                If materialsTag IsNot Nothing Then
+                    Log($"Schematic 材料类型：{materialsTag.Value}", LogLevel.Debug)
+                End If
 
-                    Log($"NBT 数据读取完成", LogLevel.Debug)
+                Log($"Schematic NBT 数据读取完成", LogLevel.Debug)
             Catch ex As Exception
                 Log(ex, "读取 Schematic NBT 数据时出错（" & Path & "）", LogLevel.Debug)
             End Try
         End Sub
+
+#End Region
+
+#Region "NBT 结构文件处理"
 
         ''' <summary>
         ''' 读取 .nbt 文件的 NBT 数据（Minecraft 结构文件格式）。
         ''' </summary>
         Private Sub LoadStructureNbtData()
             Try
-                Log($"开始读取 NBT 数据：{Path}", LogLevel.Debug)
+                Log($"开始读取 NBT 结构文件数据：{Path}", LogLevel.Debug)
                 ' 尝试不同的压缩方式读取
                 Dim rootTag As XElement = Nothing
                 Dim success As Boolean = False
@@ -1472,58 +1475,55 @@ Finished:
                     Using reader As NbtReader = VbNbtReaderCreator.FromPathAutoDetect(Path, _compressed)
                         rootTag = reader.ReadNbtAsXml(NbtType.TCompound)
                         success = True
-                        Log($"成功解析 NBT 根节点（自动检测格式）", LogLevel.Debug)
+                        Log($"成功解析 NBT 结构文件根节点（自动检测格式）", LogLevel.Debug)
                     End Using
                 Catch ex As Exception
-                    Log($"NBT 数据读取失败：{ex.Message}", LogLevel.Debug)
+                    Log($"NBT 结构文件数据读取失败：{ex.Message}", LogLevel.Debug)
                     Return
                 End Try
                 
                 If Not success OrElse rootTag Is Nothing Then
-                    Log($"无法读取 NBT 数据")
+                    Log($"无法读取 NBT 结构文件数据", LogLevel.Debug)
                     Return
                 End If
 
-                    ' 读取尺寸信息
-                    Dim sizeTag As XElement = rootTag.XPathSelectElement("//TList[@Name='size']")
-                    If sizeTag IsNot Nothing Then
-                        Dim sizeElements = sizeTag.Elements("TInt32")
-                        If sizeElements.Count() >= 3 Then
-                            Dim sizeArray = sizeElements.Take(3).Select(Function(e) e.Value).ToArray()
-                            _litematicEnclosingSize = $"{sizeArray(0)} × {sizeArray(1)} × {sizeArray(2)}"
-                            _litematicTotalVolume = CInt(sizeArray(0)) * CInt(sizeArray(1)) * CInt(sizeArray(2))
-                        End If
+                ' 读取作者信息
+                Dim authorTag As XElement = rootTag.XPathSelectElement("//TString[@Name='author']")
+                If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
+                    _structureAuthor = authorTag.Value
+                    If _Authors Is Nothing Then _Authors = _structureAuthor
+                End If
+                
+                ' 读取尺寸信息
+                Dim sizeTag As XElement = rootTag.XPathSelectElement("//TList[@Name='size']")
+                If sizeTag IsNot Nothing Then
+                    Dim sizeElements = sizeTag.Elements("TInt32")
+                    If sizeElements.Count() >= 3 Then
+                        Dim sizeArray = sizeElements.Take(3).Select(Function(e) e.Value).ToArray()
+                        _litematicEnclosingSize = $"{sizeArray(0)} × {sizeArray(1)} × {sizeArray(2)}"
+                        _litematicTotalVolume = CInt(sizeArray(0)) * CInt(sizeArray(1)) * CInt(sizeArray(2))
                     End If
-                    
+                End If
+                
+                ' 读取方块数量信息
+                Dim blocksTag As XElement = rootTag.XPathSelectElement("//TList[@Name='blocks']")
+                If blocksTag IsNot Nothing Then
+                    Dim blockElements = blocksTag.Elements("TCompound")
+                    _litematicTotalBlocks = blockElements.Count()
+                End If
+                
+                ' 读取调色板信息来计算区域数量
+                Dim paletteTag As XElement = rootTag.XPathSelectElement("//TList[@Name='palette']")
+                If paletteTag IsNot Nothing Then
+                    _litematicRegionCount = 1 ' 原版结构文件通常只有一个区域
+                End If
 
-                    
-                    ' 读取作者信息
-                    Dim authorTag As XElement = rootTag.XPathSelectElement("//TString[@Name='author']")
-                    If authorTag IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(authorTag.Value) Then
-                        _structureAuthor = authorTag.Value
-                        If _Authors Is Nothing Then _Authors = _structureAuthor
-                    End If
-                    
-                    ' 读取方块数量信息
-                    Dim blocksTag As XElement = rootTag.XPathSelectElement("//TList[@Name='blocks']")
-                    If blocksTag IsNot Nothing Then
-                        Dim blockElements = blocksTag.Elements("TCompound")
-                        _litematicTotalBlocks = blockElements.Count()
-                    End If
-                    
-                    ' 读取调色板信息来计算区域数量
-                    Dim paletteTag As XElement = rootTag.XPathSelectElement("//TList[@Name='palette']")
-                    If paletteTag IsNot Nothing Then
-                        _litematicRegionCount = 1 ' 原版结构文件通常只有一个区域
-                    End If
-                    
-
-
-                    Log($"NBT 数据读取完成", LogLevel.Debug)
             Catch ex As Exception
-                Log(ex, "读取 Structure NBT 数据时出错（" & Path & "）", LogLevel.Debug)
+                Log(ex, "读取 NBT 结构文件数据时出错（" & Path & "）", LogLevel.Debug)
             End Try
         End Sub
+
+#End Region
 
     End Class
 
@@ -1541,9 +1541,9 @@ Finished:
     End Function
 
     Public Class CompLocalLoaderData
-        Public GameVersion As McVersion
+        Public GameVersion As McInstance
         Public Loaders As List(Of CompLoaderType)
-        Public Frm As PageVersionCompResource
+        Public Frm As PageInstanceCompResource
         Public CompPath As String
         Public CompType As CompType
 
@@ -1557,11 +1557,11 @@ Finished:
             RunInUiWait(Sub() If Loader.Input.Frm IsNot Nothing Then Loader.Input.Frm.Load.ShowProgress = False)
 
             '等待 Mod 更新完成
-            If PageVersionCompResource.UpdatingVersions.Contains(Loader.Input.CompPath) Then
+            If PageInstanceCompResource.UpdatingVersions.Contains(Loader.Input.CompPath) Then
                 Log($"[Mod] 等待资源更新完成后才能继续加载资源列表：" & Loader.Input.CompPath)
                 Try
                     RunInUiWait(Sub() If Loader.Input.Frm IsNot Nothing Then Loader.Input.Frm.Load.Text = "正在更新资源")
-                    Do Until Not PageVersionCompResource.UpdatingVersions.Contains(Loader.Input.CompPath)
+                    Do Until Not PageInstanceCompResource.UpdatingVersions.Contains(Loader.Input.CompPath)
                         If Loader.IsAborted Then Return
                         Thread.Sleep(100)
                     Loop
@@ -1604,9 +1604,9 @@ Finished:
                         For Each File As FileInfo In EnumerateFiles(Loader.Input.CompPath)
                             Try
                                 If File.DirectoryName.ToLower & "\" <> RawName Then
-                                    If Not (PageVersionLeft.Version IsNot Nothing AndAlso PageVersionLeft.Version.Version.HasForge AndAlso
-                                            PageVersionLeft.Version.Version.McCodeMain < 13 AndAlso
-                                            File.Directory.Name = $"1.{PageVersionLeft.Version.Version.McCodeMain}.{PageVersionLeft.Version.Version.McCodeSub}") Then
+                                    If Not (PageInstanceLeft.Instance IsNot Nothing AndAlso PageInstanceLeft.Instance.Version.HasForge AndAlso
+                                            PageInstanceLeft.Instance.Version.McCodeMain < 13 AndAlso
+                                            File.Directory.Name = $"1.{PageInstanceLeft.Instance.Version.McCodeMain}.{PageInstanceLeft.Instance.Version.McCodeSub}") Then
                                         Continue For
                                     End If
                                 End If
@@ -1657,18 +1657,18 @@ Finished:
                     '加载 McMod 对象
                     ModEntry.Load()
                 End If
-                
-                Dim DumpMod As LocalCompFile = ModList.FirstOrDefault(Function(m) m.RawFileName = ModEntry.RawFileName AndAlso Not m.IsFolder)
-                If DumpMod IsNot Nothing AndAlso DumpMod IsNot ModEntry Then
-                    Dim DisabledMod As LocalCompFile = If(DumpMod.State = LocalCompFile.LocalFileStatus.Disabled, DumpMod, ModEntry)
-                    Log($"[Mod] 重复的 Mod 文件：{DumpMod.FileName} 与 {ModEntry.FileName}，已忽略 {DisabledMod.FileName}", LogLevel.Debug)
-                    If DisabledMod Is ModEntry Then
-                        Continue For
-                    Else
-                        ModList.Remove(DisabledMod)
-                        ModUpdateList.Remove(DisabledMod)
-                    End If
-                End If
+
+                'Dim DumpMod As LocalCompFile = ModList.FirstOrDefault(Function(m) m.RawFileName = ModEntry.RawFileName AndAlso Not m.IsFolder)
+                'If DumpMod IsNot Nothing AndAlso DumpMod IsNot ModEntry Then
+                '    Dim DisabledMod As LocalCompFile = If(DumpMod.State = LocalCompFile.LocalFileStatus.Disabled, DumpMod, ModEntry)
+                '    Log($"[Mod] 重复的 Mod 文件：{DumpMod.FileName} 与 {ModEntry.FileName}，已忽略 {DisabledMod.FileName}", LogLevel.Debug)
+                '    If DisabledMod Is ModEntry Then
+                '        Continue For
+                '    Else
+                '        ModList.Remove(DisabledMod)
+                '        ModUpdateList.Remove(DisabledMod)
+                '    End If
+                'End If
                 '读取 Comp 缓存
                 If ModEntry.State = LocalCompFile.LocalFileStatus.Unavailable Then Continue For
                 Dim CacheKey = ModEntry.ModrinthHash & Loader.Input.GameVersion.Version.McName & Loader.Input.Loaders.Join("")
@@ -1716,9 +1716,9 @@ Finished:
         '获取作为检查目标的加载器和版本
         '此处不应向下扩展检查的 MC 小版本，例如 Mod 在更新 1.16.5 后，对早期的 1.16.2 版本发布了修补补丁，这会导致 PCL 将 1.16.5 版本的 Mod 降级到 1.16.2
         Dim ModLoaders = Loader.Input.Loaders
-        Dim McVersion = Loader.Input.GameVersion.Version.McName
+        Dim McInstance = Loader.Input.GameVersion.Version.McName
         '开始网络获取
-        Log($"[Mod] 目标加载器：{ModLoaders.Join("/")}，版本：{McVersion}")
+        Log($"[Mod] 目标加载器：{ModLoaders.Join("/")}，版本：{McInstance}")
         Dim EndedThreadCount As Integer = 0, IsFailed As Boolean = False
         Dim CurrentThread As Thread = Thread.CurrentThread
         '从 Modrinth 获取信息
@@ -1761,7 +1761,7 @@ Finished:
                     '步骤 4：获取更新信息
                     Dim ModrinthUpdate = CType(GetJson(DlModRequest("https://api.modrinth.com/v2/version_files/update", "POST",
                         $"{{""hashes"": [""{ModrinthMapping.SelectMany(Function(l) l.Value.Select(Function(m) m.ModrinthHash)).Join(""",""")}""], ""algorithm"": ""sha1"", 
-                    ""loaders"": [""{ModLoaders.Join(""",""").ToLower}""],""game_versions"": [""{McVersion}""]}}", "application/json")), JObject)
+                    ""loaders"": [""{ModLoaders.Join(""",""").ToLower}""],""game_versions"": [""{McInstance}""]}}", "application/json")), JObject)
                     For Each Entry In Mods
                         If Not ModrinthUpdate.ContainsKey(Entry.ModrinthHash) OrElse Entry.CompFile Is Nothing Then Continue For
                         Dim UpdateFile As New CompFile(ModrinthUpdate(Entry.ModrinthHash), CompType.Mod)
@@ -1770,11 +1770,11 @@ Finished:
                         If Entry.CompFile.ReleaseDate >= UpdateFile.ReleaseDate OrElse Entry.CompFile.Hash = UpdateFile.Hash Then Continue For
                         '设置更新日志与更新文件
                         If Entry.UpdateFile IsNot Nothing AndAlso UpdateFile.Hash = Entry.UpdateFile.Hash Then '合并
-                            Entry.ChangelogUrls.Add($"https://modrinth.com/mod/{ModrinthUpdate(Entry.ModrinthHash)("project_id")}/changelog?g={McVersion}")
+                            Entry.ChangelogUrls.Add($"https://modrinth.com/mod/{ModrinthUpdate(Entry.ModrinthHash)("project_id")}/changelog?g={McInstance}")
                             UpdateFile.DownloadUrls.AddRange(Entry.UpdateFile.DownloadUrls) '合并下载源
                             Entry.UpdateFile = UpdateFile '优先使用 Modrinth 的文件
                         ElseIf Entry.UpdateFile Is Nothing OrElse UpdateFile.ReleaseDate >= Entry.UpdateFile.ReleaseDate Then '替换
-                            Entry.ChangelogUrls = New List(Of String) From {$"https://modrinth.com/mod/{ModrinthUpdate(Entry.ModrinthHash)("project_id")}/changelog?g={McVersion}"}
+                            Entry.ChangelogUrls = New List(Of String) From {$"https://modrinth.com/mod/{ModrinthUpdate(Entry.ModrinthHash)("project_id")}/changelog?g={McInstance}"}
                             Entry.UpdateFile = UpdateFile
                         End If
                     Next
@@ -1841,7 +1841,7 @@ Finished:
                             For Each IndexEntry In ProjectJson("latestFilesIndexes")
                                 If IndexEntry("modLoader") Is Nothing OrElse ModLoaders.Single <> IndexEntry("modLoader").ToObject(Of Integer) Then Continue For 'ModLoader 唯一且匹配
                                 Dim IndexVersion As String = IndexEntry("gameVersion")
-                                If IndexVersion <> McVersion Then Continue For 'MC 版本匹配
+                                If IndexVersion <> McInstance Then Continue For 'MC 版本匹配
                                 '由于 latestFilesIndexes 是按时间从新到老排序的，所以只需取第一个；如果需要检查多个 releaseType 下的文件，将 > -1 改为 = 1，但这应当并不会获取到更新的文件
                                 If NewestVersion IsNot Nothing AndAlso VersionSortInteger(NewestVersion, IndexVersion) > -1 Then Continue For '只保留最新 MC 版本
                                 If NewestVersion <> IndexVersion Then
@@ -1904,24 +1904,24 @@ Finished:
         If Not Mods.Any() Then Return
         For Each Entry In Mods
             Entry.CompLoaded = Not IsFailed
-            Cache(Entry.ModrinthHash & McVersion & ModLoaders.Join("")) = Entry.ToJson()
+            Cache(Entry.ModrinthHash & McInstance & ModLoaders.Join("")) = Entry.ToJson()
         Next
         WriteFile(PathTemp & "Cache\LocalComp.json", Cache.ToString(If(ModeDebug, Newtonsoft.Json.Formatting.Indented, Newtonsoft.Json.Formatting.None)))
         '刷新边栏
-        If FrmVersionMod?.Filter = PageVersionCompResource.FilterType.CanUpdate Then
-            RunInUi(Sub() FrmVersionMod?.RefreshUI()) '同步 “可更新” 列表 (#4677)
+        If FrmInstanceMod?.Filter = PageInstanceCompResource.FilterType.CanUpdate Then
+            RunInUi(Sub() FrmInstanceMod?.RefreshUI()) '同步 “可更新” 列表 (#4677)
         Else
-            RunInUi(Sub() FrmVersionMod?.RefreshBars())
+            RunInUi(Sub() FrmInstanceMod?.RefreshBars())
         End If
     End Sub
 
     Public Function GetCurrentVersionModLoader() As List(Of CompLoaderType)
         Dim ModLoaders As New List(Of CompLoaderType)
-        If PageVersionLeft.Version.Version.HasForge Then ModLoaders.Add(CompLoaderType.Forge)
-        If PageVersionLeft.Version.Version.HasNeoForge Then ModLoaders.Add(CompLoaderType.NeoForge)
-        If PageVersionLeft.Version.Version.HasFabric Then ModLoaders.Add(CompLoaderType.Fabric)
-        If PageVersionLeft.Version.Version.HasQuilt Then ModLoaders.AddRange({CompLoaderType.Fabric, CompLoaderType.Quilt})
-        If PageVersionLeft.Version.Version.HasLiteLoader Then ModLoaders.Add(CompLoaderType.LiteLoader)
+        If PageInstanceLeft.Instance.Version.HasForge Then ModLoaders.Add(CompLoaderType.Forge)
+        If PageInstanceLeft.Instance.Version.HasNeoForge Then ModLoaders.Add(CompLoaderType.NeoForge)
+        If PageInstanceLeft.Instance.Version.HasFabric Then ModLoaders.Add(CompLoaderType.Fabric)
+        If PageInstanceLeft.Instance.Version.HasQuilt Then ModLoaders.AddRange({CompLoaderType.Fabric, CompLoaderType.Quilt})
+        If PageInstanceLeft.Instance.Version.HasLiteLoader Then ModLoaders.Add(CompLoaderType.LiteLoader)
         If Not ModLoaders.Any() Then ModLoaders.AddRange({CompLoaderType.Forge, CompLoaderType.NeoForge, CompLoaderType.Fabric, CompLoaderType.LiteLoader, CompLoaderType.Quilt})
         Return ModLoaders
     End Function
@@ -1940,7 +1940,7 @@ Finished:
     ''' <summary>
     ''' 检查 Mod 列表中存在的错误，返回错误信息的集合。
     ''' </summary>
-    Public Function McModCheck(Version As McVersion, Mods As List(Of McMod)) As List(Of String)
+    Public Function McModCheck(Version As McInstance, Mods As List(Of McMod)) As List(Of String)
         Dim Result As New List(Of String)
         '令所有 Mod 进行基础检查，并归纳需要检查的 Mod
         Dim CurrentModList As New List(Of McMod)
@@ -1953,7 +1953,7 @@ Finished:
         Next
         '添加默认依赖
         Dim CurrentDependencies As New Dictionary(Of String, String()) '{DependencyVersion, Path}
-        If Version.State = McVersionState.Forge Then CurrentDependencies.Add("forge", {Version.Version.ForgeVersion, "Forge"})
+        If Version.State = McInstanceState.Forge Then CurrentDependencies.Add("forge", {Version.Version.ForgeVersion, "Forge"})
         CurrentDependencies.Add("minecraft", {Version.Version.McName, "Minecraft"})
         '检查重复的 Mod，并添加对应的依赖
         For Each ModEntity In CurrentModList

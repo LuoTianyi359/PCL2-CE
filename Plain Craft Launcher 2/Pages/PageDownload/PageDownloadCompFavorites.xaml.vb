@@ -1,4 +1,4 @@
-﻿Public Class PageDownloadCompFavorites
+Public Class PageDownloadCompFavorites
 
 #Region "加载器信息"
     '加载器信息
@@ -225,9 +225,12 @@
         AddHandler Btn_EditNote.Click, Sub(sender As Object, e As EventArgs)
                                            CurrentFavTarget.Notes.TryGetValue(CompId, Notes)
                                            Dim DesiredNote = MyMsgBoxInput("修改备注", DefaultInput:=Notes)
-                                           CurrentFavTarget.Notes(CompId) = DesiredNote
-                                           NoteItem.Text = If(String.IsNullOrWhiteSpace(DesiredNote), "", $" ({DesiredNote})")
-                                           CompFavorites.Save()
+                                           '只有在用户确认时才更新备注，避免取消时清空原有备注
+                                           If DesiredNote IsNot Nothing Then
+                                               CurrentFavTarget.Notes(CompId) = DesiredNote
+                                               NoteItem.Text = If(String.IsNullOrWhiteSpace(DesiredNote), "", $" ({DesiredNote})")
+                                               CompFavorites.Save()
+                                           End If
                                        End Sub
         '删除按钮
         Dim Btn_Delete As New MyIconButton
@@ -512,6 +515,7 @@
             If SearchResult.Contains(Item) Then SearchResult.Remove(Item)
             CurrentFavTarget.Favs.Remove(Item.Tag.Id)
             CompFavorites.Save()
+            If Not CompItemList.Any Then FrmDownloadCompFavorites.PageLoaderRestart()
         Catch ex As Exception
             Log(ex, "[CompFavourites] 移除收藏时发生错误")
         End Try

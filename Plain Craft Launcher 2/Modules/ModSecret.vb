@@ -26,7 +26,7 @@ Friend Module ModSecret
     'Natayark ID Client Secret，需要经过 PASSWORD HASH 处理（https://uutool.cn/php-password/）
     Public NatayarkClientSecret As String = If(Environment.GetEnvironmentVariable("PCL_NAID_CLIENT_SECRET"), "")
     '联机服务根地址
-    Public LinkServerRoot As String = If(Environment.GetEnvironmentVariable("PCL_LINK_SERVER_ROOT"), "")
+    Public LinkServerRoots As String = If(Environment.GetEnvironmentVariable("PCL_LINK_SERVER_ROOT"), "")
 #Else
     Public Const RegFolder As String = "PCLCE" 'PCL 社区版的注册表与 PCL 的注册表隔离，以防数据冲突
     Public Const OAuthClientId As String = ""
@@ -35,8 +35,9 @@ Friend Module ModSecret
     Public Const TelemetryKey As String = ""
     Public Const NatayarkClientId As String = ""
     Public Const NatayarkClientSecret As String = ""
-    Public Const LinkServerRoot As String = ""
+    Public Const LinkServerRoots As String = ""
 #End If
+    Public LinkServers As String() = LinkServerRoots.Split(";")
 
     Friend Sub SecretOnApplicationStart()
         '提升 UI 线程优先级
@@ -68,7 +69,14 @@ Friend Module ModSecret
             Environment.[Exit](ProcessReturnValues.Cancel)
         End If
         '社区版提示
-        If Setup.Get("UiLauncherCEHint") Then ShowCEAnnounce()
+        If Setup.Get("UiLauncherCEHint") Then
+            Dim count As Integer = Setup.Get("UiLauncherCEHintCount")
+            If count <= 0 Then
+                ShowCEAnnounce()
+                count = 11
+            End If
+            Setup.Set("UiLauncherCEHintCount", count - 1)
+        End If
     End Sub
     ''' <summary>
     ''' 展示社区版提示
@@ -157,7 +165,7 @@ PCL-Community 及其成员与龙腾猫跃无从属关系，且均不会为您的
     End Function
 
     Friend Sub SecretLaunchJvmArgs(ByRef DataList As List(Of String))
-        Dim DataJvmCustom As String = Setup.Get("VersionAdvanceJvm", Version:=McVersionCurrent)
+        Dim DataJvmCustom As String = Setup.Get("VersionAdvanceJvm", instance:=McInstanceCurrent)
         DataList.Insert(0, If(DataJvmCustom = "", Setup.Get("LaunchAdvanceJvm"), DataJvmCustom)) '可变 JVM 参数
         Select Case Setup.Get("LaunchPreferredIpStack")
             Case 0
@@ -166,14 +174,16 @@ PCL-Community 及其成员与龙腾猫跃无从属关系，且均不会为您的
                 DataList.Add("-Djava.net.preferIPv6Stack=true")
         End Select
         McLaunchLog("当前剩余内存：" & Math.Round(My.Computer.Info.AvailablePhysicalMemory / 1024 / 1024 / 1024 * 10) / 10 & "G")
-        DataList.Add("-Xmn" & Math.Floor(PageVersionSetup.GetRam(McVersionCurrent) * 1024 * 0.15) & "m")
-        DataList.Add("-Xmx" & Math.Floor(PageVersionSetup.GetRam(McVersionCurrent) * 1024) & "m")
+        DataList.Add("-Xmn" & Math.Floor(PageInstanceSetup.GetRam(McInstanceCurrent) * 1024 * 0.15) & "m")
+        DataList.Add("-Xmx" & Math.Floor(PageInstanceSetup.GetRam(McInstanceCurrent) * 1024) & "m")
         If Not DataList.Any(Function(d) d.Contains("-Dlog4j2.formatMsgNoLookups=true")) Then DataList.Add("-Dlog4j2.formatMsgNoLookups=true")
     End Sub
 
 #End Region
 
 #Region "网络鉴权"
+
+
 
     Friend Function SecretCdnSign(UrlWithMark As String)
         If Not UrlWithMark.EndsWithF("{CDN}") Then Return UrlWithMark
@@ -182,34 +192,19 @@ PCL-Community 及其成员与龙腾猫跃无从属关系，且均不会为您的
     ''' <summary>
     ''' 设置 Headers 的 UA、Referer。
     ''' </summary>
-    Friend Sub SecretHeadersSign(Url As String, ByRef Client As HttpRequestMessage, Optional UseBrowserUserAgent As Boolean = False)
+    Friend Sub SecretHeadersSign(Url As String, ByRef Client As HttpRequestMessage, Optional UseBrowserUserAgent As Boolean = False, Optional CustomUserAgent As String = "")
         If Url.Contains("api.curseforge.com") Then Client.Headers.Add("x-api-key", CurseForgeAPIKey)
-        Client.Headers.Add("User-Agent",
-        If(Url.Contains("baidupcs.com") OrElse Url.Contains("baidu.com"),
-                "LogStatistic",
-                If(UseBrowserUserAgent,
-                    $"PCL2/{UpstreamVersion}.{VersionBranchCode} PCLCE/{VersionStandardCode} Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0",
-                    $"PCL2/{UpstreamVersion}.{VersionBranchCode} PCLCE/{VersionStandardCode}"
-                )
-            ))
+        Dim userAgent As String = If(Not String.IsNullOrEmpty(CustomUserAgent),
+                                     CustomUserAgent,
+                                         If(UseBrowserUserAgent,
+                                             $"PCL2/{UpstreamVersion}.{VersionBranchCode} PCLCE/{VersionStandardCode} Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0",
+                                             $"PCL2/{UpstreamVersion}.{VersionBranchCode} PCLCE/{VersionStandardCode}"
+                                         )
+                                     )
+        Client.Headers.Add("User-Agent", userAgent)
 
         Client.Headers.Add("Referer", "http://" & VersionCode & ".ce.open.pcl2.server/")
         If Url.Contains("pcl2ce.pysio.online/post") AndAlso Not String.IsNullOrEmpty(TelemetryKey) Then Client.Headers.Add("Authorization", TelemetryKey)
-    End Sub
-    ''' <summary>
-    ''' 设置 Headers 的 UA、Referer。
-    ''' </summary>
-    Friend Sub SecretHeadersSign(Url As String, ByRef Request As HttpWebRequest, Optional UseBrowserUserAgent As Boolean = False)
-        If Url.Contains("baidupcs.com") OrElse Url.Contains("baidu.com") Then
-            Request.UserAgent = "LogStatistic" '#4951
-        ElseIf UseBrowserUserAgent Then
-            Request.UserAgent = "PCL2/" & UpstreamVersion & "." & VersionBranchCode & " PCLCE/" & VersionStandardCode & " Mozilla/5.0 AppleWebKit/537.36 Chrome/63.0.3239.132 Safari/537.36"
-        Else
-            Request.UserAgent = "PCL2/" & UpstreamVersion & "." & VersionBranchCode & " PCLCE/" & VersionStandardCode
-        End If
-        Request.Referer = "http://" & VersionCode & ".ce.open.pcl2.server/"
-        If Url.Contains("api.curseforge.com") Then Request.Headers("x-api-key") = CurseForgeAPIKey
-        If Url.Contains("pcl2ce.pysio.online/post") Then Request.Headers("Authorization") = TelemetryKey
     End Sub
 
 #End Region
@@ -788,9 +783,23 @@ PCL-Community 及其成员与龙腾猫跃无从属关系，且均不会为您的
     End Function
     Public Sub NoticeUserUpdate(Optional Silent As Boolean = False)
         If Not IsVerisonLatest() Then
-            Dim latest = RemoteServer.GetLatestVersion(
-                If(IsUpdBetaChannel, UpdateChannel.beta, UpdateChannel.stable),
-                If(IsArm64System, UpdateArch.arm64, UpdateArch.x64))
+            Dim latest As VersionDataModel = Nothing
+            Dim checkUpdateEx As Exception = Nothing
+            RunInNewThread(
+                Sub()
+                    Try
+                        latest = RemoteServer.GetLatestVersion(
+                            If(IsUpdBetaChannel, UpdateChannel.beta, UpdateChannel.stable),
+                            If(IsArm64System, UpdateArch.arm64, UpdateArch.x64))
+                    Catch ex As Exception
+                        checkUpdateEx = ex
+                    End Try
+                End Sub
+            ).Join()
+            If latest Is Nothing Then
+                Log(checkUpdateEx,"[Update] 检查更新失败",LogLevel.MsgBox)
+                Exit Sub
+            End If
             If Not Val(Environment.OSVersion.Version.ToString().Split(".")(2)) >= 19042 AndAlso Not latest.VersionName.StartsWithF("2.9.") Then
                 If MyMsgBox($"发现了启动器更新（版本 {latest.VersionName}），但是由于你的 Windows 版本过低，不满足新版本要求。{vbCrLf}你需要更新到 Windows 10 20H2 或更高版本才可以继续更新。", "启动器更新 - 系统版本过低", "升级 Windows 10", "取消", IsWarn:=True, ForceWait:=True) = 1 Then OpenWebsite("https://www.microsoft.com/zh-cn/software-download/windows10")
                 Exit Sub
@@ -850,7 +859,7 @@ PCL-Community 及其成员与龙腾猫跃无从属关系，且均不会为您的
                 Exit Sub
             End If
             ' id old new restart
-            Dim text As String = String.Concat(New String() {"--update ", Process.GetCurrentProcess().Id, " """, PathWithName, """ """, fileName, """ ", TriggerRestartAndByEnd})
+            Dim text As String = $"update {Process.GetCurrentProcess().Id} ""{PathWithName}"" ""{fileName}"" true"
             Log("[System] 更新程序启动，参数：" + text, LogLevel.Normal, "出现错误")
             Process.Start(New ProcessStartInfo(fileName) With {.WindowStyle = ProcessWindowStyle.Hidden, .CreateNoWindow = True, .Arguments = text})
             If TriggerRestartAndByEnd Then

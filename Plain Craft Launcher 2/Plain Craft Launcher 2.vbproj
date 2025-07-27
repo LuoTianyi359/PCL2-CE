@@ -309,13 +309,22 @@
     <Compile Include="Modules\Updates\UpdatesWrapperModel.vb" />
     <Compile Include="Modules\Updates\VersionAnnouncementDataModel.vb" />
     <Compile Include="Modules\Updates\VersionDataModel.vb" />
+    <Compile Include="Pages\PageDownload\PageDownloadLegacyFabric.xaml.vb">
+      <DependentUpon>PageDownloadLegacyFabric.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Pages\PageLaunch\PageLoginOffline.xaml.vb">
       <DependentUpon>PageLoginOffline.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\PageOther\PageOtherLog.xaml.vb">
+      <DependentUpon>PageOtherLog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\PageSetup\PageHomePageMarket.xaml.vb">
+      <DependentUpon>PageHomePageMarket.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageSetup\PageSetupJava.xaml.vb">
       <DependentUpon>PageSetupJava.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\MyLocalModItem.xaml.vb">
+    <Compile Include="Pages\PageInstance\MyLocalModItem.xaml.vb">
       <DependentUpon>MyLocalModItem.xaml</DependentUpon>
     </Compile>
     <Compile Include="Modules\ModEvent.vb" />
@@ -435,41 +444,41 @@
     <Compile Include="Pages\PageLogRight.xaml.vb">
       <DependentUpon>PageLogRight.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionInstall.xaml.vb">
-      <DependentUpon>PageVersionInstall.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceInstall.xaml.vb">
+      <DependentUpon>PageInstanceInstall.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionExport.xaml.vb">
-      <DependentUpon>PageVersionExport.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceExport.xaml.vb">
+      <DependentUpon>PageInstanceExport.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionLeft.xaml.vb">
-      <DependentUpon>PageVersionLeft.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceLeft.xaml.vb">
+      <DependentUpon>PageInstanceLeft.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionCompResource.xaml.vb">
-      <DependentUpon>PageVersionCompResource.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceCompResource.xaml.vb">
+      <DependentUpon>PageInstanceCompResource.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionModDisabled.xaml.vb">
-      <DependentUpon>PageVersionModDisabled.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceModDisabled.xaml.vb">
+      <DependentUpon>PageInstanceModDisabled.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionSaves.xaml.vb">
-      <DependentUpon>PageVersionSaves.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceSaves.xaml.vb">
+      <DependentUpon>PageInstanceSaves.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesInfo.xaml.vb">
-      <DependentUpon>PageVersionSavesInfo.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesInfo.xaml.vb">
+      <DependentUpon>PageInstanceSavesInfo.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesBackup.xaml.vb">
-      <DependentUpon>PageVersionSavesBackup.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesBackup.xaml.vb">
+      <DependentUpon>PageInstanceSavesBackup.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesLeft.xaml.vb">
-      <DependentUpon>PageVersionSavesLeft.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesLeft.xaml.vb">
+      <DependentUpon>PageInstanceSavesLeft.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionScreenshot.xaml.vb">
-      <DependentUpon>PageVersionScreenshot.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceScreenshot.xaml.vb">
+      <DependentUpon>PageInstanceScreenshot.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionOverall.xaml.vb">
-      <DependentUpon>PageVersionOverall.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceOverall.xaml.vb">
+      <DependentUpon>PageInstanceOverall.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageVersion\PageVersionSetup.xaml.vb">
-      <DependentUpon>PageVersionSetup.xaml</DependentUpon>
+    <Compile Include="Pages\PageInstance\PageInstanceSetup.xaml.vb">
+      <DependentUpon>PageInstanceSetup.xaml</DependentUpon>
     </Compile>
     <Compile Include="Controls\MyDropShadow.vb" />
     <Compile Include="Modules\Base\ModLoader.vb" />
@@ -656,6 +665,10 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="Pages\PageDownload\PageDownloadLegacyFabric.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Pages\PageDownload\PageDownloadQuilt.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -746,6 +759,10 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="Pages\PageOther\PageOtherLog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Pages\PageOther\PageOtherVote.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -762,35 +779,39 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="Pages\PageSetup\PageHomePageMarket.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Pages\PageSetup\PageSetupJava.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\MyLocalModItem.xaml">
+    <Page Include="Pages\PageInstance\MyLocalModItem.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionInstall.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceInstall.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionSaves.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceSaves.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesInfo.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesInfo.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesBackup.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesBackup.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionSaves\PageVersionSavesLeft.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceSaves\PageInstanceSavesLeft.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionScreenshot.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceScreenshot.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -798,7 +819,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionExport.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceExport.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -886,23 +907,23 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionLeft.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceLeft.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionCompResource.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceCompResource.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionModDisabled.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceModDisabled.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionOverall.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceOverall.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageVersion\PageVersionSetup.xaml">
+    <Page Include="Pages\PageInstance\PageInstanceSetup.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -1121,6 +1142,7 @@
   <ItemGroup>
     <Resource Include="Images\Icons\Disabled.png" />
     <Resource Include="Images\Icons\Unavailable.png" />
+    <Resource Include="Images\Icons\Folder.png" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\Heads\MCBBS.png" />
@@ -1144,6 +1166,9 @@
     <PackageReference Include="CacheCow.Client">
       <Version>2.13.1</Version>
     </PackageReference>
+    <PackageReference Include="CacheCow.Client.FileStore">
+      <Version>2.13.1</Version>
+    </PackageReference>
     <PackageReference Include="Costura.Fody">
       <Version>6.0.0</Version>
       <IncludeAssets>runtime; compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -1164,10 +1189,10 @@
       <Version>0.5.0.1</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.Identity.Client">
-      <Version>4.72.1</Version>
+      <Version>4.74.0</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.Identity.Client.Broker">
-      <Version>4.72.1</Version>
+      <Version>4.74.0</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.Windows.SDK.Contracts">
       <Version>10.0.19041.2</Version>
@@ -1194,7 +1219,7 @@
       <Version>2.1.0</Version>
     </PackageReference>
     <PackageReference Include="PlainNamedBinaryTag">
-      <Version>1.1.1</Version>
+      <Version>1.2.0</Version>
     </PackageReference>
     <PackageReference Include="STUN">
       <Version>0.5.0</Version>
@@ -1204,6 +1229,9 @@
     </PackageReference>
     <PackageReference Include="System.Security.AccessControl">
       <Version>6.0.1</Version>
+    </PackageReference>
+    <PackageReference Include="System.Text.Json">
+      <Version>9.0.7</Version>
     </PackageReference>
     <PackageReference Include="TagLibSharp">
       <Version>2.3.0</Version>
@@ -1223,6 +1251,7 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\Themes\server_bg.png" />
+    <Resource Include="Images\Icons\DefaultServer.png" />
     <Content Include="Resources\linkd.exe" />
     <Resource Include="Resources\oauth-complete.html" />
   </ItemGroup>

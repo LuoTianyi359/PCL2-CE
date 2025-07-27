@@ -1,8 +1,8 @@
-Imports System.ComponentModel
-Imports System.Management
 Imports System.Net
 Imports System.Runtime.ConstrainedExecution
 Imports System.Runtime.InteropServices
+
+Imports PCL.Core
 
 Public Class PageOtherTest
     Public Sub New()
@@ -23,6 +23,7 @@ Public Class PageOtherTest
 
         TextDownloadFolder.Validate()
         TextDownloadName.Validate()
+        TextUserAgent.Text = Setup.Get("ToolDownloadCustomUserAgent")
     End Sub
     Private Sub StartButtonRefresh()
         BtnDownloadStart.IsEnabled = String.IsNullOrEmpty(TextDownloadFolder.ValidateResult) AndAlso
@@ -34,6 +35,10 @@ Public Class PageOtherTest
     Private Sub SaveCacheDownloadFolder() Handles TextDownloadFolder.ValidatedTextChanged
         Setup.Set("CacheDownloadFolder", TextDownloadFolder.Text)
         TextDownloadName.Validate()
+    End Sub
+    Private Sub SaveCustomUserAgent() Handles TextUserAgent.ValidatedTextChanged
+        Setup.Set("ToolDownloadCustomUserAgent", TextUserAgent.Text)
+        
     End Sub
     Private Shared Sub DownloadState(Loader As ModLoader.LoaderCombo(Of Integer))
         Try
@@ -51,7 +56,8 @@ Public Class PageOtherTest
         End Try
     End Sub
 
-    Public Shared Sub StartCustomDownload(Url As String, FileName As String, Optional Folder As String = Nothing)
+    Public Shared Sub StartCustomDownload(Url As String, FileName As String, Optional Folder As String = Nothing, Optional UserAgent As String = "")
+
         Try
             If String.IsNullOrWhiteSpace(Folder) Then
                 Folder = SelectSaveFile("选择文件保存位置", FileName, Nothing, Nothing)
@@ -73,8 +79,13 @@ Public Class PageOtherTest
             Log("[Download] 自定义下载文件名：" + FileName, LogLevel.Normal, "出现错误")
             Log("[Download] 自定义下载文件目标：" + Folder, ModBase.LogLevel.Normal, "出现错误")
             Dim uuid As Integer = GetUuid()
-            Dim loaderDownload As LoaderDownload = New ModNet.LoaderDownload("自定义下载文件：" + FileName + " ", New List(Of NetFile)() From {New NetFile(New String() {Url}, Folder + FileName, Nothing, True)})
-            Dim loaderCombo As LoaderCombo(Of Integer) = New LoaderCombo(Of Integer)("自定义下载 (" + uuid.ToString() + ") ", New LoaderBase() {loaderDownload}) With {.OnStateChanged = AddressOf DownloadState}
+            Dim loaderdownload As LoaderBase
+            If String.IsNullOrEmpty(New ValidateHttp().Validate(Url)) Then
+                loaderdownload = New LoaderDownload("自定义下载文件：" + FileName + " ", New List(Of NetFile)() From {New NetFile(New String() {Url}, Folder + FileName, Nothing, True, UserAgent)})
+            Else 'UNC 路径
+                loaderdownload = New LoaderDownloadUnc("自定义下载文件：" + FileName + " ", New Tuple(Of String, String)(Url, Folder + FileName))
+            End If
+            Dim loaderCombo As New LoaderCombo(Of Integer)("自定义下载 (" + uuid.ToString() + ") ", New LoaderBase() {loaderDownload}) With {.OnStateChanged = AddressOf DownloadState}
             loaderCombo.Start()
             LoaderTaskbarAdd(Of Integer)(loaderCombo)
             FrmMain.BtnExtraDownload.ShowRefresh()
@@ -85,7 +96,18 @@ Public Class PageOtherTest
         End Try
     End Sub
     Public Shared Sub Jrrp()
-        Hint("为便于维护，社区版中不包含百宝箱功能……")
+        Dim random As New Random(GenerateDailySeed())
+        Dim luckValue = random.Next(0, 101)
+        Dim rating = GetRating(luckValue)
+        Dim currentDate = DateTime.Now.ToString("yyyy/MM/dd")
+        Dim title = $"今日人品 - {currentDate}"
+
+        If (luckValue >= 60) Then
+            MyMsgBox($"你今天的人品值是：{luckValue}！{rating}", title)
+        Else
+            MyMsgBox($"你今天的人品值是：{luckValue}... {rating}", title, IsWarn:=luckValue <= 30)
+        End If
+
     End Sub
     Public Shared Sub RubbishClear()
         RunInUi(
@@ -383,7 +405,7 @@ Public Class PageOtherTest
     End Sub
 
     Private Sub BtnDownloadStart_Click(sender As Object, e As MouseButtonEventArgs)
-        StartCustomDownload(TextDownloadUrl.Text, TextDownloadName.Text, TextDownloadFolder.Text)
+        StartCustomDownload(TextDownloadUrl.Text, TextDownloadName.Text, TextDownloadFolder.Text, TextUserAgent.Text)
         TextDownloadUrl.Text = ""
         TextDownloadUrl.Validate()
         TextDownloadUrl.ForceShowAsSuccess()
@@ -458,47 +480,54 @@ Public Class PageOtherTest
                                    End Try
                                End If
                                '查询信息
-                               Dim query As New ModLink.MCPing(ip.ToString(), port)
-                               Dim ret = query.GetInfo().Result
-                               If ret Is Nothing Then Throw New Exception("没有查询到信息")
-                               'Base64 图像转换
-                               Dim base64String = ret.Favicon
-                               If base64String.Contains(",") Then
-                                   base64String = base64String.Split(","c)(1)
-                               End If
-                               Dim imageBytes As Byte() = Convert.FromBase64String(base64String)
-                               '延迟颜色
-                               Dim latencyColor As String
-                               If ret.Latency < 150 Then
-                                   latencyColor = "a"
-                               ElseIf ret.Latency < 400 Then
-                                   latencyColor = "6"
-                               Else
-                                   latencyColor = "c"
-                               End If
-                               '设置 UI
-                               RunInUi(Sub()
-                                           MinecraftFormatter.SetColorfulTextLab($"Minecraft 服务器{vbCrLf}{ret.Description}", LabServerDesc)
-                                           MinecraftFormatter.SetColorfulTextLab($"{ret.PlayerOnline}/{ret.PlayerMax}{vbCrLf}§{latencyColor}{ret.Latency}ms", LabServerPlayer)
-                                           ServerInfo.Visibility = Visibility.Visible
-                                           If Not String.IsNullOrEmpty(base64String) Then
-                                               Dim bitmapImage As New BitmapImage()
-                                               Using ms As New MemoryStream(imageBytes)
-                                                   bitmapImage.BeginInit()
-                                                   bitmapImage.CacheOption = BitmapCacheOption.OnLoad ' 加载后关闭流
-                                                   bitmapImage.StreamSource = ms
-                                                   bitmapImage.EndInit()
-                                               End Using
-                                               ImgServerLogo.Source = bitmapImage
-                                           Else
-                                               Dim defaultImage As New BitmapImage()
-                                               defaultImage.BeginInit()
-                                               defaultImage.UriSource = New Uri("pack://application:,,,/Plain Craft Launcher 2;component/Images/Icons/DefaultServer.png")
-                                               defaultImage.EndInit()
-                                               ImgServerLogo.Source = defaultImage
-                                           End If
-                                       End Sub)
-                               Hint("查询完成", HintType.Finish)
+                               Using query As New Utils.Minecraft.McPing(ip.ToString(), port)
+                                   Dim ret = query.PingAsync().Result
+                                   If ret Is Nothing Then Throw New Exception("没有查询到信息")
+                                   'Base64 图像转换
+                                   Dim base64String = ret.Favicon
+                                   If base64String.Contains(",") Then
+                                       base64String = base64String.Split(","c)(1)
+                                   End If
+                                   Dim imageBytes As Byte() = Convert.FromBase64String(base64String)
+                                   '延迟颜色
+                                   Dim latencyColor As String
+                                   If ret.Latency < 150 Then
+                                       latencyColor = "a"
+                                   ElseIf ret.Latency < 400 Then
+                                       latencyColor = "6"
+                                   Else
+                                       latencyColor = "c"
+                                   End If
+                                   '设置 UI
+                                   RunInUi(Sub()
+                                               MinecraftFormatter.SetColorfulTextLab($"Minecraft 服务器{vbCrLf}{ret.Description}", LabServerDesc)
+                                               MinecraftFormatter.SetColorfulTextLab($"{ret.Players.Online}/{ret.Players.Max}{vbCrLf}§{latencyColor}{ret.Latency}ms", LabServerPlayer)
+                                               If ret.Players.Samples.Any Then
+                                                   LabServerPlayer.ToolTip = ret.Players.Samples.Select(Function(x) x.Name).Join(vbCrLf)
+                                                   ToolTipService.SetPlacement(LabServerPlayer, Primitives.PlacementMode.Mouse)
+                                               Else
+                                                   LabServerPlayer.ToolTip = Nothing
+                                               End If
+                                               ServerInfo.Visibility = Visibility.Visible
+                                               If Not String.IsNullOrEmpty(base64String) Then
+                                                   Dim bitmapImage As New BitmapImage()
+                                                   Using ms As New MemoryStream(imageBytes)
+                                                       bitmapImage.BeginInit()
+                                                       bitmapImage.CacheOption = BitmapCacheOption.OnLoad ' 加载后关闭流
+                                                       bitmapImage.StreamSource = ms
+                                                       bitmapImage.EndInit()
+                                                   End Using
+                                                   ImgServerLogo.Source = bitmapImage
+                                               Else
+                                                   Dim defaultImage As New BitmapImage()
+                                                   defaultImage.BeginInit()
+                                                   defaultImage.UriSource = New Uri("pack://application:,,,/Plain Craft Launcher 2;component/Images/Icons/DefaultServer.png")
+                                                   defaultImage.EndInit()
+                                                   ImgServerLogo.Source = defaultImage
+                                               End If
+                                           End Sub)
+                                   Hint("查询完成", HintType.Finish)
+                               End Using
                            Catch ex As Exception
                                Log(ex, "查询失败", LogLevel.Hint)
                            Finally
@@ -541,28 +570,17 @@ Public Class PageOtherTest
 
     '今日人品
     Private Sub BtnLuck_Click(sender As Object, e As MouseButtonEventArgs)
-        Dim random As New Random(GenerateDailySeed())
-        Dim luckValue = random.Next(0, 101)
-        Dim rating = GetRating(luckValue)
-        Dim currentDate = DateTime.Now.ToString("yyyy/MM/dd")
-        Dim title = $"今日人品 - {currentDate}"
-
-        If (luckValue >= 60) Then
-            MyMsgBox($"你今天的人品值是：{luckValue}！{rating}", title)
-        Else
-            MyMsgBox($"你今天的人品值是：{luckValue}... {rating}", title, IsWarn:=luckValue <= 30)
-        End If
-
+        Jrrp()
     End Sub
 
-    Private Function GenerateDailySeed() As Integer
+    Public Shared Function GenerateDailySeed() As Integer
         Dim datePart As String = Date.Today.ToString("yyyyMMdd")
         Dim secretCode As String = SecretGetRawCode()
 
         Return (datePart & secretCode).GetHashCode()
     End Function
 
-    Private Function GetRating(luckValue As Integer) As String
+    Public Shared Function GetRating(luckValue As Integer) As String
         If luckValue = 100 Then
             Return "100！100！\n隐藏主题 欧皇…… 不对，社区版应该没有这玩意……"
         Else
@@ -575,4 +593,21 @@ Public Class PageOtherTest
                                "（是百分制哦）"))))))
         End If
     End Function
+
+    Private Sub BtnCreateShortcut_Click(sender As Object, e As MouseButtonEventArgs)
+        Const shortcutName = "PCL 社区版.lnk"
+        Const desktopName = "桌面"
+        Const startName = "开始菜单"
+        Dim desktop = Service.FileService.GetSpecialPath(Environment.SpecialFolder.Desktop, shortcutName)
+        Dim start = Service.FileService.GetSpecialPath(Environment.SpecialFolder.StartMenu, "Programs\" & shortcutName)
+        Dim choice = MyMsgBox(
+            "这个快捷方式不会自动移除，在删除/移动启动器前请手动移除快捷方式。" & vbCrLf & vbCrLf &
+            desktopName & "位置: " & desktop & vbCrLf & startName & "位置: " & start,
+            "选择快捷方式位置", "取消", desktopName, startName)
+        If choice = 1 Then Exit Sub
+        Dim shortcutPath = If(choice = 2, desktop, start)
+        Dim locationName = If(choice = 2, desktopName, startName)
+        Helper.Files.CreateShortcut(shortcutPath, Helper.NativeInterop.ExecutablePath)
+        Hint("已在" & locationName & "创建快捷方式", HintType.Finish)
+    End Sub
 End Class

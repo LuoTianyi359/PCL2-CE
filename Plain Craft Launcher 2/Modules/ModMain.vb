@@ -479,6 +479,7 @@ EndHint:
     Public FrmDownloadShader As PageDownloadShader
     Public FrmDownloadResourcePack As PageDownloadResourcePack
     Public FrmDownloadCompFavorites As PageDownloadCompFavorites
+    Public FrmDownloadLegacyFabric As PageDownloadLegacyFabric
 
     '设置页面声明
     Public FrmSetupLeft As PageSetupLeft
@@ -487,6 +488,7 @@ EndHint:
     Public FrmSetupSystem As PageSetupSystem
     Public FrmSetupLink As PageSetupLink
     Public FrmSetupJava As PageSetupJava
+    Public FrmHomePageMarket As PageHomePageMarket
 
     '其他页面声明
     Public FrmOtherLeft As PageOtherLeft
@@ -495,6 +497,7 @@ EndHint:
     Public FrmOtherTest As PageOtherTest
     Public FrmOtherFeedback As PageOtherFeedback
     Public FrmOtherVote As PageOtherVote
+    Public FrmOtherLog As PageOtherLog
 
     '登录页面声明
     Public FrmLoginAuth As PageLoginAuth
@@ -503,23 +506,23 @@ EndHint:
     Public FrmLoginProfileSkin As PageLoginProfileSkin
     Public FrmLoginOffline As PageLoginOffline
 
-    '版本设置页面声明
-    Public FrmVersionLeft As PageVersionLeft
-    Public FrmVersionOverall As PageVersionOverall
-    Public FrmVersionMod As PageVersionCompResource
-    Public FrmVersionModDisabled As PageVersionModDisabled
-    Public FrmVersionScreenshot As PageVersionScreenshot
-    Public FrmVersionSaves As PageVersionSaves
-    Public FrmVersionShader As PageVersionCompResource
-    Public FrmVersionSchematic As PageVersionCompResource
-    Public FrmVersionResourcePack As PageVersionCompResource
-    Public FrmVersionSetup As PageVersionSetup
-    Public FrmVersionInstall As PageVersionInstall
-    Public FrmVersionExport As PageVersionExport
-    '版本存档页面
-    Public FrmVersionSavesLeft As PageVersionSavesLeft
-    Public FrmVersionSavesInfo As PageVersionSavesInfo
-    Public FrmVersionSavesBackup As PageVersionSavesBackup
+    '实例设置页面声明
+    Public FrmInstanceLeft As PageInstanceLeft
+    Public FrmInstanceOverall As PageInstanceOverall
+    Public FrmInstanceMod As PageInstanceCompResource
+    Public FrmInstanceModDisabled As PageInstanceModDisabled
+    Public FrmInstanceScreenshot As PageInstanceScreenshot
+    Public FrmInstanceSaves As PageInstanceSaves
+    Public FrmInstanceShader As PageInstanceCompResource
+    Public FrmInstanceSchematic As PageInstanceCompResource
+    Public FrmInstanceResourcePack As PageInstanceCompResource
+    Public FrmInstanceSetup As PageInstanceSetup
+    Public FrmInstanceInstall As PageInstanceInstall
+    Public FrmInstanceExport As PageInstanceExport
+    '实例存档页面
+    Public FrmInstanceSavesLeft As PageInstanceSavesLeft
+    Public FrmInstanceSavesInfo As PageInstanceSavesInfo
+    Public FrmInstanceSavesBackup As PageInstanceSavesBackup
 
     '资源信息分页声明
     Public FrmDownloadCompDetail As PageDownloadCompDetail

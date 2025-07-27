@@ -161,6 +161,8 @@ WaitRetry:
             '设置初始化
             Setup.Load("SystemDebugMode")
             Setup.Load("SystemDebugAnim")
+            Setup.Load("SystemUseDefaultProxy")
+            Setup.Load("SystemHttpProxy")
             Setup.Load("ToolDownloadThread")
             Setup.Load("ToolDownloadCert")
             Setup.Load("ToolDownloadSpeed")
@@ -177,8 +179,8 @@ WaitRetry:
             WriteFile(PathPure & "CE\" & "msalruntime.zip", GetResources("msalruntime"))
             If Not File.Exists(PathPure & "CE\msalruntime.dll") Then
                 If Directory.Exists(PathPure & "CE\runtimes") Then DeleteDirectory(PathPure & "CE\runtimes")
-                Using fs = New FileStream(PathPure & "CE\" & "msalruntime.zip", FileMode.Open)
-                    Using fszip = New ZipArchive(fs)
+                Using fs = New FileStream(PathPure & "CE\" & "msalruntime.zip", FileMode.Open, FileAccess.Read)
+                    Using fszip = New ZipArchive(fs, ZipArchiveMode.Read)
                         fszip.ExtractToDirectory(PathPure & "CE\")
                     End Using
                 End Using

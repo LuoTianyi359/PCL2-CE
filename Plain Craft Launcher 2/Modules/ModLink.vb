@@ -4,174 +4,16 @@ Imports System.Net.Sockets
 Imports Makaretu.Nat
 Imports STUN
 Imports System.Threading.Tasks
-Imports PCL.Core.Helper
+Imports PCL.Core.Model
+Imports PCL.Core.Utils.Minecraft
 Imports PCL.Core.Service
+Imports PCL.Core.Extension
+Imports PCL.Core.Helper
 
 Public Module ModLink
 
     Public IsLobbyAvailable As Boolean = False
     Public RequiresRealname As Boolean = True
-
-#Region "MCPing"
-    Public Class WorldInfo
-        Public Property Port As Integer
-        Public Property VersionName As String
-        Public Property PlayerMax As Integer
-        Public Property PlayerOnline As Integer
-        Public Property Description As String
-        Public Property Favicon As String
-        Public Property Latency As Integer = -1
-
-        Public Overrides Function ToString() As String
-            Return $"[MCPing] Version: {VersionName}, Players: {PlayerOnline}/{PlayerMax}, Description: {Description}"
-        End Function
-    End Class
-
-    Public Class MCPing
-
-
-        Sub New(IP As String, Optional Port As UInt16 = 25565)
-            _IP = IP
-            _Port = Port
-        End Sub
-
-        Private _IP As String
-        Private _Port As UInt16
-
-        ''' <summary>
-        ''' 对疑似 MC 端口进行 MCPing，并返回相关信息
-        ''' </summary>
-        Public Async Function GetInfo(Optional DoLog As Boolean = True) As Tasks.Task(Of WorldInfo)
-            Try
-                ' 创建 TCP 客户端并连接到服务器
-                Using client As New TcpClient(_IP, _Port)
-                    If DoLog Then Log($"[MCPing] Established connection ({_IP}:{_Port})", LogLevel.Debug)
-                    ' 向服务器发送握手数据包
-                    Using stream = client.GetStream()
-                        If Not stream.CanWrite OrElse Not stream.CanRead Then Return Nothing
-                        Dim latency As New Stopwatch
-
-                        Dim handshake As Byte() = BuildHandshake(_IP, _Port)
-                        If DoLog Then Log($"[MCPing] Sending {String.Join(" ", handshake)}", LogLevel.Debug)
-                        Await stream.WriteAsync(handshake, 0, handshake.Length)
-                        If DoLog Then Log($"[MCPing] Sended handshake", LogLevel.Debug)
-
-                        ' 向服务器发送查询状态信息的数据包
-                        Dim statusRequest As Byte() = BuildStatusRequest()
-                        If DoLog Then Log($"[MCPing] Sending {String.Join(" ", statusRequest)}")
-                        Await stream.WriteAsync(statusRequest, 0, statusRequest.Length)
-                        If DoLog Then Log($"[MCPing] Sended statusrequest", LogLevel.Debug)
-
-                        ' 读取服务器响应的数据
-                        Dim res As New List(Of Byte)
-                        Dim buffer(4096) As Byte
-
-                        ' 读取varInt头部
-                        latency.Start()
-                        Dim packetLength = VarInt.ReadFromStream(stream)
-                        latency.Stop()
-                        Log($"[MCPing] Got packet length ({packetLength})", LogLevel.Debug)
-
-                        ' 读取剩余数据包
-                        Dim totalBytes = 0
-                        Do
-                            Dim bytesRead = Await stream.ReadAsync(buffer, 0, buffer.Length)
-                            If bytesRead = 0 Then Exit Do
-                            res.AddRange(buffer.Take(bytesRead))
-                            totalBytes += bytesRead
-                            If DoLog Then Log($"[MCPing] Received part ({bytesRead})", LogLevel.Debug)
-                        Loop While totalBytes < packetLength
-
-                        Log($"[MCPing] Received ({res.Count})", LogLevel.Debug)
-                        Dim response As String = Encoding.UTF8.GetString(res.ToArray(), 0, res.Count)
-                        Dim startIndex = response.IndexOf("{""", StringComparison.Ordinal)
-                        If startIndex > 10 Then Return Nothing
-                        response = response.Substring(startIndex)
-                        Log("[MCPing] Server Response: " & response, LogLevel.Debug)
-
-                        '查找并截取第一段 JSON
-                        '有些 mod 或是整合包定制服务端会在返回的 JSON 后面添加新的内容，比如 Better MC
-                        '这时候需要把第一段合法的 JSON 截出来，否则下面解析 JSON 会炸掉
-                        '但是它们完全可以在返回的 JSON 内部添加自定义内容，添加在后面估计就是为了图 mixin 省事
-                        '不守规范一时爽，第三方解析火葬场
-                        Dim stack = 0, index = 0, stackStr = False, length = response.Length
-                        While index < length
-                            Select Case response(index)
-                                Case "\"c
-                                    If stackStr Then index += 1
-                                Case """"c
-                                    stackStr = Not stackStr
-                                Case "{"c
-                                    If Not stackStr Then stack += 1
-                                Case "}"c
-                                    stack -= 1
-                                    If stack = 0 Then
-                                        response = response.Substring(0, index + 1)
-                                        If DoLog Then Log("[MCPing] Correct Response: " & response, LogLevel.Debug)
-                                        Exit While
-                                    End If
-                            End Select
-                            index += 1
-                        End While
-
-                        '解析返回的 JSON 文本
-                        Dim j = JObject.Parse(response)
-
-                        Dim world As New WorldInfo With {
-                        .VersionName = j("version")("name"),
-                        .PlayerMax = j("players")("max"),
-                        .PlayerOnline = j("players")("online"),
-                        .Favicon = If(j("favicon"), ""),
-                        .Port = _Port,
-                        .Latency = Math.Round(latency.ElapsedMilliseconds)
-                        }
-                        Dim descObj = j("description")
-                        world.Description = ""
-                        If descObj.Type = JTokenType.Object AndAlso descObj("extra") IsNot Nothing Then
-                            If DoLog Then Log("[MCPing] 获取到的内容为 extra 形式", LogLevel.Debug)
-                            world.Description = MinecraftFormatter.ConvertToMinecraftFormat(descObj)
-                        ElseIf descObj.Type = JTokenType.Object AndAlso descObj("text") IsNot Nothing Then
-                            If DoLog Then Log("[MCPing] 获取到的内容为 text 形式", LogLevel.Debug)
-                            world.Description = descObj("text").ToString()
-                        ElseIf descObj.Type = JTokenType.String Then
-                            If DoLog Then Log("[MCPing] 获取到的内容为 string 形式", LogLevel.Debug)
-                            world.Description = descObj.ToString()
-                        End If
-                        Return world
-                    End Using
-                End Using
-            Catch ex As Exception
-                Log(ex, "[MCPing] Error: " & ex.Message)
-            End Try
-            Return Nothing
-        End Function
-
-
-        Function BuildHandshake(serverIp As String, serverPort As Integer) As Byte()
-            ' 构建握手数据包
-            Dim handshake As New List(Of Byte)
-            handshake.AddRange(VarInt.Encode(0)) ' 数据包 ID 握手包
-            handshake.AddRange(VarInt.Encode(578)) ' 协议
-            Dim encodedIP = Encoding.UTF8.GetBytes(serverIp)
-            handshake.AddRange(VarInt.Encode(CULng(encodedIP.Length))) ' 服务器地址长度
-            handshake.AddRange(encodedIP) ' 服务器地址
-            handshake.AddRange(BitConverter.GetBytes(CUShort(serverPort)).Reverse()) ' 服务器端口
-            handshake.AddRange(VarInt.Encode(1)) ' 下一个状态 获取服务器状态
-
-            handshake.InsertRange(0, VarInt.Encode(CULng(handshake.Count)))
-
-            Return handshake.ToArray()
-        End Function
-
-        Function BuildStatusRequest() As Byte()
-            ' 构建状态请求数据包
-            Dim packet As New List(Of Byte)
-            packet.AddRange(VarInt.Encode(1))
-            packet.AddRange(VarInt.Encode(0))
-            Return packet.ToArray() ' 状态请求数据包
-        End Function
-    End Class
-#End Region
 
 #Region "端口查找"
     Public Class PortFinder
@@ -306,7 +148,7 @@ Public Module ModLink
 #End Region
 
 #Region "Minecraft 实例探测"
-    Public Async Function MCInstanceFinding() As Tasks.Task(Of List(Of WorldInfo))
+    Public Async Function MCInstanceFinding() As Tasks.Task(Of List(Of Tuple(Of Integer, McPingResult, String)))
         'Java 进程 PID 查询
         Dim PIDLookupResult As New List(Of String)
         Dim JavaNames As New List(Of String)
@@ -327,24 +169,53 @@ Public Module ModLink
             End If
         Next
 
-        Dim res As New List(Of WorldInfo)
+        Dim res As New List(Of Tuple(Of Integer, McPingResult, String))
         Try
             If Not PIDLookupResult.Any Then Return res
-            Dim ports = PortFinder.GetProcessPort(Integer.Parse(PIDLookupResult.First))
-            Log($"[MCDetect] 获取到端口数量 {ports.Count}")
-            For Each port In ports
-                Log($"[MCDetect] 找到疑似端口，开始验证：{port}")
-                Dim test As New MCPing("127.0.0.1", port)
-                Dim info = Await test.GetInfo()
-                If Not String.IsNullOrWhiteSpace(info.VersionName) Then
-                    Log($"[MCDetect] 端口 {port} 为有效 Minecraft 世界")
-                    res.Add(info)
-                End If
+            Dim lookupList As New List(Of Tuple(Of Integer, Integer))
+            For Each pid In PIDLookupResult
+                Dim infos As New List(Of Tuple(Of Integer, Integer))
+                Dim ports = PortFinder.GetProcessPort(Integer.Parse(pid))
+                For Each port In ports
+                    infos.Add(New Tuple(Of Integer, Integer)(port, pid))
+                Next
+                lookupList.AddRange(infos)
             Next
+            Log($"[MCDetect] 获取到端口数量 {lookupList.Count}")
+            '并行查找本地，超时 3s 自动放弃
+            Dim checkTasks = lookupList.Select(Function(lookup) Task.Run(Async Function()
+                                                                             Try
+                                                                                 Log($"[MCDetect] 找到疑似端口，开始验证：{lookup}")
+                                                                                 Using test As New McPing("127.0.0.1", lookup.Item1, 3000)
+                                                                                     Dim info = Await test.PingAsync()
+                                                                                     Dim launcher = GetLauncherBrand(lookup.Item2)
+                                                                                     If Not String.IsNullOrWhiteSpace(info.Version.Name) Then
+                                                                                         Log($"[MCDetect] 端口 {lookup} 为有效 Minecraft 世界")
+                                                                                         res.Add(New Tuple(Of Integer, McPingResult, String)(lookup.Item1, info, launcher))
+                                                                                     End If
+                                                                                 End Using
+                                                                             Catch ex As Exception
+                                                                                 If TypeOf ex.InnerException Is ObjectDisposedException Then
+                                                                                     Log($"[McDetect] {lookup} 验证超时，已强制断开连接")
+                                                                                 Else
+                                                                                     Log(ex, $"[McDetect] {lookup} 验证出错")
+                                                                                 End If
+                                                                             End Try
+                                                                         End Function)).ToArray()
+            Await Task.WhenAll(checkTasks)
         Catch ex As Exception
             Log(ex, "[MCDetect] 获取端口信息错误", LogLevel.Debug)
         End Try
         Return res
+    End Function
+    Public Function GetLauncherBrand(pid As Integer) As String
+        Try
+            Dim cmd = CmdLineHelper.GetCommandLine(pid)
+            Return cmd.AfterFirst("-Dminecraft.launcher.brand=").BeforeFirst("-").TrimEnd("'", " ")
+        Catch ex As Exception
+            Log(ex, $"[MCDetect] 检测 PID {pid} 进程的启动参数失败")
+            Return ""
+        End Try
     End Function
 #End Region
 
@@ -396,12 +267,24 @@ Public Module ModLink
     Public Const ETNetworkDefaultName As String = "PCLCELobby"
     Public Const ETNetworkDefaultSecret As String = "PCLCELobbyDebug"
     Public ETVersion As String = "2.3.2"
-    Public ETPath As String = PathTemp + $"EasyTier\{ETVersion}\easytier-windows-{If(IsArm64System, "arm64", "x86_64")}"
+    Public ETPath As String = IO.Path.Combine(FileService.LocalDataPath, "EasyTier", ETVersion, "easytier-windows-" & If(IsArm64System, "arm64", "x86_64"))
     Public IsETRunning As Boolean = False
     Public ETServerDefList As New List(Of ETRelay)
-    Public ETProcessPid As String = Nothing
-    Public Function LaunchEasyTier(IsHost As Boolean, Optional Name As String = ETNetworkDefaultName, Optional Secret As String = ETNetworkDefaultSecret, Optional IsAfterDownload As Boolean = False, Optional LocalPort As Integer = 25565) As Integer
+    Public ETProcess As Process = Nothing
+    Public IsETReady As Boolean = False
+    Public Function LaunchEasyTier(IsHost As Boolean, Optional Name As String = ETNetworkDefaultName, Optional Secret As String = ETNetworkDefaultSecret, Optional IsAfterDownload As Boolean = False, Optional LocalPort As Integer = 25565, Optional remotePort As Integer = 25565) As Integer
         Try
+            ETProcess = New Process With {
+                .EnableRaisingEvents = True,
+                .StartInfo = New ProcessStartInfo With {
+                    .FileName = $"{ETPath}\easytier-core.exe",
+                    .WorkingDirectory = ETPath,
+                    .UseShellExecute = False,
+                    .CreateNoWindow = True,
+                    .RedirectStandardOutput = True,
+                    .RedirectStandardError = True
+                }
+            }
             '兜底
             If ((Not File.Exists(ETPath & "\easytier-core.exe")) OrElse (Not File.Exists(ETPath & "\easytier-cli.exe")) OrElse (Not File.Exists(ETPath & "\wintun.dll"))) AndAlso (Not IsAfterDownload) Then
                 Log("[Link] EasyTier 不存在，开始下载")
@@ -412,15 +295,19 @@ Public Module ModLink
             Dim Arguments As String = Nothing
 
             '大厅设置
+            Dim lobbyId As String = (Name & Secret & If(IsHost, LocalPort, remotePort).ToString()).FromB10ToB32()
+            If Not IsHost Then
+                PageLinkLobby.JoinerLocalPort = PortHelper.GetAvailablePort()
+                Log("[Link] ET 本地端口转发端口: " & PageLinkLobby.JoinerLocalPort)
+            End If
+            Secret = ETNetworkDefaultSecret & Secret
+            Name = ETNetworkDefaultName & Name
             If IsHost Then
-                Name = ETNetworkDefaultName & Name
-                Secret = ETNetworkDefaultSecret & Name
                 Log($"[Link] 本机作为创建者创建大厅，EasyTier 网络名称: {Name}")
                 Arguments = $"-i 10.114.51.41 --network-name {Name} --network-secret {Secret} --no-tun --relay-network-whitelist ""{Name}"" --private-mode true" '创建者
             Else
-                Name = ETNetworkDefaultName & Name
                 Log($"[Link] 本机作为加入者加入大厅，EasyTier 网络名称: {Name}")
-                Arguments = $"-d --network-name {Name} --network-secret {Secret} --dev-name ""PCLCELobby"" --relay-network-whitelist ""{Name}"" --private-mode true" '加入者
+                Arguments = $"-d --network-name {Name} --network-secret {Secret} --no-tun --relay-network-whitelist ""{Name}"" --private-mode true --port-forward=tcp://127.0.0.1:{PageLinkLobby.JoinerLocalPort}/10.114.51.41:{remotePort}" '加入者
             End If
 
             '节点设置
@@ -430,7 +317,7 @@ Public Module ModLink
                 If Not String.IsNullOrWhiteSpace(Server) Then Servers.Add(Server)
             Next
             If Not Setup.Get("LinkServerType") = 2 Then
-                Dim AllowCommunity As Boolean = Setup.Get("LinkServerType") = 2
+                Dim AllowCommunity As Boolean = Setup.Get("LinkServerType") = 1
                 For Each Server In ETServerDefList
                     If Server.Type = "community" AndAlso Not AllowCommunity Then Continue For
                     Servers.Add(Server.Url)
@@ -443,102 +330,113 @@ Public Module ModLink
             If Setup.Get("LinkRelayType") = 1 Then
                 Arguments += " --disable-p2p"
             End If
-
-            '创建防火墙规则
-            If IsHost Then
-                PromoteService.Append($"start cmd. ; /c netsh advfirewall firewall add rule name=""PCLCE Lobby - EasyTier"" dir=in action=allow program=""{ETPath}\easytier-core.exe"" protocol=any localport={LocalPort}")
+            '数据处理设置
+            Dim proxyType As Integer = Setup.Get("LinkProxyType")
+            If proxyType = 0 Then
+                Arguments += " --enable-quic-proxy"
+            ElseIf proxyType = 1 Then
+                Arguments += " --enable-kcp-proxy"
+            Else
+                Arguments += " --enable-quic-proxy --enable-kcp-proxy"
             End If
-            PromoteService.Append($"start cmd. ; /c netsh advfirewall firewall add rule name=""PCLCE Lobby - EasyTier"" dir=in action=deny program=""{ETPath}\easytier-core.exe"" protocol=any")
-            PromoteService.Activate()
 
             '用户名与其他参数
-            Arguments += $" --enable-kcp-proxy --latency-first --use-smoltcp"
+            Arguments += $" --latency-first"
             Dim Hostname As String = Nothing
-            Hostname = If(IsHost, LocalPort & "-", "J-") & NaidProfile.Username
+            Hostname = If(IsHost, "H|", "J|") & NaidProfile.Username
             If SelectedProfile IsNot Nothing Then
-                Hostname += $"-{SelectedProfile.Username}"
+                Hostname += $"|{SelectedProfile.Username}"
             End If
             Arguments += $" --hostname ""{Hostname}"""
 
             '启动
             Log($"[Link] 启动 EasyTier")
             'Log($"[Link] EasyTier 参数: {Arguments}")
-            RunInUi(Sub() FrmLinkLobby.LabFinishId.Text = Name.Replace(ETNetworkDefaultName, ""))
-            PromoteService.Append($"start {ETPath}\easytier-core.exe. ; ", Sub(s As String) ETProcessPid = s, False)
-            IsETRunning = PromoteService.Activate()
+            ETProcess.StartInfo.Arguments = Arguments
+            RunInUi(Sub() FrmLinkLobby.LabFinishId.Text = lobbyId)
+            ETProcess.Start()
+            IsETRunning = True
             Return 0
         Catch ex As Exception
             Log("[Link] 尝试启动 EasyTier 时遇到问题: " + ex.ToString())
             IsETRunning = False
-            ETProcessPid = Nothing
+            ETProcess = Nothing
             Return 1
         End Try
     End Function
     Public DlEasyTierLoader As LoaderCombo(Of JObject) = Nothing
     Public Function DownloadEasyTier(Optional LaunchAfterDownload As Boolean = False, Optional IsHost As Boolean = False, Optional Name As String = ETNetworkDefaultName, Optional Secret As String = ETNetworkDefaultSecret)
         Dim DlTargetPath As String = PathTemp + $"EasyTier\EasyTier-{ETVersion}.zip"
-        Return RunInNewThread(Function()
-                                  Try
-                                      '构造步骤加载器
-                                      Dim Loaders As New List(Of LoaderBase)
-                                      '下载
-                                      Dim Address As New List(Of String)
-                                      Address.Add($"https://s3.pysio.online/pcl2-ce/static/easytier/easytier-windows-{If(IsArm64System, "arm64", "x86_64")}-v{ETVersion}.zip")
-                                      Address.Add($"https://github.com/EasyTier/EasyTier/releases/download/v{ETVersion}/easytier-windows-{If(IsArm64System, "arm64", "x86_64")}-v{ETVersion}.zip")
+        RunInNewThread(Function()
+                           Try
+                               '构造步骤加载器
+                               Dim Loaders As New List(Of LoaderBase)
+                               '下载
+                               Dim Address As New List(Of String)
+                               Address.Add($"https://staticassets.naids.com/resources/pclce/static/easytier/easytier-windows-{If(IsArm64System, "arm64", "x86_64")}-v{ETVersion}.zip")
+                               Address.Add($"https://s3.pysio.online/pcl2-ce/static/easytier/easytier-windows-{If(IsArm64System, "arm64", "x86_64")}-v{ETVersion}.zip")
 
-                                      Loaders.Add(New LoaderDownload("下载 EasyTier", New List(Of NetFile) From {New NetFile(Address.ToArray, DlTargetPath, New FileChecker(MinSize:=1024 * 64))}) With {.ProgressWeight = 15})
-                                      Loaders.Add(New LoaderTask(Of Integer, Integer)("解压文件", Sub() ExtractFile(DlTargetPath, PathTemp + "EasyTier\" + ETVersion)))
-                                      Loaders.Add(New LoaderTask(Of Integer, Integer)("清理文件", Sub() File.Delete(DlTargetPath)))
-                                      If LaunchAfterDownload Then
-                                          Loaders.Add(New LoaderTask(Of Integer, Integer)("启动 EasyTier", Function() LaunchEasyTier(IsHost, Name, Secret, True)))
-                                      End If
-                                      Loaders.Add(New LoaderTask(Of Integer, Integer)("刷新界面", Sub() RunInUi(Sub()
-                                                                                                                PageLinkLobby.IsEasyTierExist = True
-                                                                                                                FrmLinkLobby.BtnCreate.IsEnabled = True
-                                                                                                                FrmLinkLobby.BtnSelectJoin.IsEnabled = True
-                                                                                                                Hint("联机组件下载完成！", HintType.Finish)
-                                                                                                            End Sub)))
-                                      '启动
-                                      DlEasyTierLoader = New LoaderCombo(Of JObject)("大厅初始化", Loaders)
-                                      DlEasyTierLoader.Start()
-                                      LoaderTaskbarAdd(DlEasyTierLoader)
-                                      FrmMain.BtnExtraDownload.ShowRefresh()
-                                      FrmMain.BtnExtraDownload.Ribble()
-                                      Return 0
-                                  Catch ex As Exception
-                                      Log(ex, "[Link] 下载 EasyTier 依赖文件失败", LogLevel.Hint)
-                                      Hint("下载 EasyTier 依赖文件失败，请检查网络连接", HintType.Critical)
-                                      Return 1
-                                  End Try
-                              End Function)
+                               Loaders.Add(New LoaderDownload("下载 EasyTier", New List(Of NetFile) From {New NetFile(Address.ToArray, DlTargetPath, New FileChecker(MinSize:=1024 * 64))}) With {.ProgressWeight = 15})
+                               Loaders.Add(New LoaderTask(Of Integer, Integer)("解压文件", Sub() ExtractFile(DlTargetPath, IO.Path.Combine(FileService.LocalDataPath, "EasyTier", ETVersion))))
+                               Loaders.Add(New LoaderTask(Of Integer, Integer)("清理文件", Sub() File.Delete(DlTargetPath)))
+                               If LaunchAfterDownload Then
+                                   Loaders.Add(New LoaderTask(Of Integer, Integer)("启动 EasyTier", Function() LaunchEasyTier(IsHost, Name, Secret, True)))
+                               End If
+                               Loaders.Add(New LoaderTask(Of Integer, Integer)("刷新界面", Sub() RunInUi(Sub()
+                                                                                                         FrmLinkLobby.BtnCreate.IsEnabled = True
+                                                                                                         FrmLinkLobby.BtnSelectJoin.IsEnabled = True
+                                                                                                         Hint("联机组件下载完成！", HintType.Finish)
+                                                                                                     End Sub)))
+                               '启动
+                               DlEasyTierLoader = New LoaderCombo(Of JObject)("大厅初始化", Loaders)
+                               DlEasyTierLoader.Start()
+                               LoaderTaskbarAdd(DlEasyTierLoader)
+                               FrmMain.BtnExtraDownload.ShowRefresh()
+                               FrmMain.BtnExtraDownload.Ribble()
+                               Return 0
+                           Catch ex As Exception
+                               Log(ex, "[Link] 下载 EasyTier 依赖文件失败", LogLevel.Hint)
+                               Hint("下载 EasyTier 依赖文件失败，请检查网络连接", HintType.Critical)
+                               Return 1
+                           End Try
+                       End Function)
+        Return 0
     End Function
 
     Public Sub ExitEasyTier()
-
-        If IsETRunning AndAlso ETProcessPid IsNot Nothing Then
+        PageLinkLobby.IsETFirstCheckFinished = False
+        If IsETRunning AndAlso ETProcess IsNot Nothing Then
             Try
-                Log($"[Link] 停止 EasyTier（PID: {ETProcessPid}）")
-                Dim returns = Nothing
-                PromoteService.Append("start cmd. ; /c netsh advfirewall firewall delete rule name=""PCLCE Lobby - EasyTier""")
-                PromoteService.Append($"kill {ETProcessPid}", Function(s) returns = s)
-                PromoteService.Activate()
+                Log($"[Link] 停止 EasyTier（PID: {ETProcess.Id}）")
+                ETProcess.Kill()
+                ETProcess.WaitForExit(200)
                 IsETRunning = False
-                ETProcessPid = Nothing
+                IsETReady = False
+                ETProcess = Nothing
+                PageLinkLobby.HostInfo = Nothing
                 PageLinkLobby.RemotePort = Nothing
-                PageLinkLobby.Hostname = Nothing
+                PageLinkLobby.JoinerLocalPort = Nothing
                 PageLinkLobby.IsETFirstCheckFinished = False
+                RunInUi(Sub()
+                            FrmLinkLobby.LabFinishId.Text = ""
+                            FrmLinkLobby.BtnFinishExit.Text = "退出大厅"
+                        End Sub)
                 StopMcPortForward()
             Catch ex As InvalidOperationException
                 Log("[Link] EasyTier 进程不存在，可能已退出")
                 IsETRunning = False
-                ETProcessPid = Nothing
+                IsETReady = False
+                ETProcess = Nothing
             Catch ex As NullReferenceException
                 Log("[Link] EasyTier 进程不存在，可能已退出")
                 IsETRunning = False
-                ETProcessPid = Nothing
+                IsETReady = False
+                ETProcess = Nothing
             Catch ex As Exception
                 Log("[Link] 尝试停止 EasyTier 进程时遇到问题: " + ex.ToString())
-                ETProcessPid = Nothing
+                IsETRunning = False
+                IsETReady = False
+                ETProcess = Nothing
             End Try
         End If
     End Sub
@@ -554,6 +452,12 @@ Public Module ModLink
         If String.IsNullOrWhiteSpace(Setup.Get("LinkNaidRefreshToken")) Then
             Hint("请先前往联机设置并登录至 Natayark Network 再进行联机！", HintType.Critical)
             Return False
+        End If
+        If SelectedProfile IsNot Nothing Then
+            If SelectedProfile.Username.Contains("|") Then
+                Hint("MC 玩家 ID 不可包含分隔符 (|) ！")
+                Return False
+            End If
         End If
         Try
             GetNaidData(Setup.Get("LinkNaidRefreshToken"), True, IsSilent:=True)
@@ -580,9 +484,19 @@ Public Module ModLink
             Hint("你的 Natayark Network 账号状态异常，可能已被封禁！", HintType.Critical)
             Return False
         End If
+        If DlEasyTierLoader IsNot Nothing Then
+            If DlEasyTierLoader.State = LoadState.Loading Then
+                Hint("EasyTier 尚未下载完成，请等待其下载完成后再试！")
+                Return False
+            ElseIf DlEasyTierLoader.State = LoadState.Failed OrElse DlEasyTierLoader.State = LoadState.Aborted Then
+                Hint("正在下载 EasyTier，请稍后...")
+                DownloadEasyTier()
+                Return False
+            End If
+        End If
         Return True
     End Function
-    Public Function LaunchLink(IsHost As Boolean, Optional Name As String = ETNetworkDefaultName, Optional Secret As String = ETNetworkDefaultSecret, Optional LocalPort As Integer = 25565) As Integer
+    Public Function LaunchLink(IsHost As Boolean, Optional Name As String = ETNetworkDefaultName, Optional Secret As String = ETNetworkDefaultSecret, Optional LocalPort As Integer = 25565, Optional remotePort As Integer = 25565) As Integer
         '回传联机数据
         Log("[Link] 开始发送联机数据")
         Dim Servers As String = Nothing
@@ -624,8 +538,7 @@ Public Module ModLink
             End If
             Return 1
         End Try
-        StopMcPortForward()
-        Return LaunchEasyTier(IsHost, Name, Secret, LocalPort:=LocalPort)
+        Return LaunchEasyTier(IsHost, Name, Secret, LocalPort:=LocalPort, remotePort:=remotePort)
     End Function
 #End Region
 
@@ -642,10 +555,13 @@ Public Module ModLink
     End Class
     Public NaidProfile As New NaidUser()
     Public NaidProfileException As Exception
+    Public NaidIsGettingInfo As Boolean
     Public Sub GetNaidData(Token As String, Optional IsRefresh As Boolean = False, Optional IsRetry As Boolean = False, Optional IsSilent As Boolean = False)
         RunInNewThread(Sub() GetNaidDataSync(Token, IsRefresh, IsRetry, IsSilent))
     End Sub
     Public Function GetNaidDataSync(Token As String, Optional IsRefresh As Boolean = False, Optional IsRetry As Boolean = False, Optional IsSilent As Boolean = False) As Boolean
+        If NaidIsGettingInfo Then Return False
+        NaidIsGettingInfo = True
         Try
             '获取 AccessToken 和 RefreshToken
             Dim RequestData As String = $"grant_type={If(IsRefresh, "refresh_token", "authorization_code")}&client_id={NatayarkClientId}&client_secret={NatayarkClientSecret}&{If(IsRefresh, "refresh_token", "code")}={Token}&redirect_uri=http://localhost:29992/callback"
@@ -697,6 +613,8 @@ Public Module ModLink
             End If
             NaidProfileException = ex
             Return False
+        Finally
+            NaidIsGettingInfo = False
         End Try
     End Function
 #End Region
@@ -814,104 +732,125 @@ PortRetry:
 #End Region
 
 #Region "局域网广播"
-    Private tr1 As Thread = Nothing
-    Private tr2 As Thread = Nothing
+    Private UdpThread As Thread = Nothing
+    Private TcpThread As Thread = Nothing
     Private ServerSocket As Socket = Nothing
-    Private ChatClient As UdpClient = Nothing
+    Private BoardcastClient As Socket
     Private IsMcPortForwardRunning As Boolean = False
     Private PortForwardRetryTimes As Integer = 0
-    Public Async Sub McPortForward(Ip As String, Optional Port As Integer = 25565, Optional Desc As String = "§ePCL CE 局域网广播", Optional IsRetry As Boolean = False)
+    Public Async Sub McPortForward(remoteIp As String, Optional remotePort As Integer = 25565, Optional desc As String = "§ePCL CE 局域网广播", Optional isRetry As Boolean = False)
         If IsMcPortForwardRunning Then Exit Sub
-        If IsRetry Then PortForwardRetryTimes += 1
-        Log($"[Link] 开始 MC 端口转发，IP: {Ip}, 端口: {Port}")
-        Dim Sip As New IPEndPoint((Await Dns.GetHostAddressesAsync(Ip))(0), Port)
+        If isRetry Then PortForwardRetryTimes += 1
+        Log($"[Link] 开始 MC 端口转发，远程 IP: {remoteIp}, 远程端口: {remotePort}")
+        Dim Sip As New IPEndPoint((Await Dns.GetHostAddressesAsync(remoteIp))(0), remotePort)
 
         ServerSocket = New Socket(SocketType.Stream, ProtocolType.Tcp)
         ServerSocket.Bind(New IPEndPoint(IPAddress.Any, 0))
         ServerSocket.Listen(-1)
-
+        Dim localPort As Integer = CType(ServerSocket.LocalEndPoint, IPEndPoint).Port
         IsMcPortForwardRunning = True
+        UdpThread = New Thread(Async Sub()
+                                   Try
+                                       Log($"[Link] 开始进行 MC 局域网广播, 广播的本地端口: {localPort}")
+                                       BoardcastClient = New Socket(SocketType.Dgram, ProtocolType.Udp)
+                                       BoardcastClient.DualMode = True
+                                       'ChatClient = New UdpClient("224.0.2.60", 4445)
+                                       'ChatClientV6 = New UdpClient("ff02::1:ff00:60", 4445)
+                                       Dim Buffer As Byte() = Encoding.UTF8.GetBytes($"[MOTD]{desc}[/MOTD][AD]{localPort}[/AD]")
+                                       Dim boardcastEndpoint = New IPEndPoint(IPAddress.Parse("127.0.0.1"), 4445)
+                                       'Dim boardcastEndpointv6 = New IPEndPoint(IPAddress.Parse("::1"), 4445)
+                                       Log($"[Link] 端口转发: {remoteIp}:{remotePort} -> 本地 {localPort}")
+                                       While IsMcPortForwardRunning
+                                           If IsMcPortForwardRunning AndAlso BoardcastClient IsNot Nothing Then
+                                               BoardcastClient.SendTo(Buffer, boardcastEndpoint)
+                                               'BoardcastClient.SendTo(Buffer, boardcastEndpointv6)
+                                               If IsMcPortForwardRunning Then Await Task.Delay(1500)
+                                           End If
+                                       End While
+                                   Catch ex As Exception
+                                       If Not IsMcPortForwardRunning Then Exit Sub
+                                       If PortForwardRetryTimes < 4 Then
+                                           Log(ex, "[Link] Minecraft UDP 组播线程异常", LogLevel.Normal)
+                                           Log($"[Link] Minecraft 端口转发线程异常，放弃前再尝试 {3 - PortForwardRetryTimes} 次")
+                                           McPortForward(remoteIp, remotePort, desc, True)
+                                       Else
+                                           Log(ex, "[Link] Minecraft 端口转发线程异常", LogLevel.Hint)
+                                           IsMcPortForwardRunning = False
+                                       End If
+                                   End Try
+                               End Sub)
 
-        tr1 = New Thread(Async Sub()
-                             Try
-                                 Log("[Link] 开始进行 MC 局域网广播")
-                                 ChatClient = New UdpClient("224.0.2.60", 4445)
-                                 Dim Buffer As Byte() = Encoding.UTF8.GetBytes($"[MOTD]{Desc}[/MOTD][AD]{CType(ServerSocket.LocalEndPoint, IPEndPoint).Port}[/AD]")
-                                 While IsMcPortForwardRunning
-                                     If ChatClient IsNot Nothing Then
-                                         ChatClient.EnableBroadcast = True
-                                         ChatClient.MulticastLoopback = True
-                                     End If
+        TcpThread = New Thread(Async Sub()
+                                   Dim c As Socket
+                                   Dim s As Socket
+                                   Try
+                                       While IsMcPortForwardRunning
+                                           c = ServerSocket.Accept()
+                                           s = New Socket(SocketType.Stream, ProtocolType.Tcp)
 
-                                     If IsMcPortForwardRunning AndAlso ChatClient IsNot Nothing Then
-                                         Await ChatClient.SendAsync(Buffer, Buffer.Length)
-                                         If IsMcPortForwardRunning Then Await Task.Delay(1500)
-                                     End If
-                                 End While
-                             Catch ex As Exception
-                                 If PortForwardRetryTimes < 4 Then
-                                     Log($"[Link] Minecraft 端口转发线程异常，放弃前再尝试 {3 - PortForwardRetryTimes} 次")
-                                     McPortForward(Ip, Port, Desc, True)
-                                 Else
-                                     Log(ex, "[Link] Minecraft 端口转发线程异常", LogLevel.Msgbox)
-                                     IsMcPortForwardRunning = False
-                                 End If
-                             End Try
-                         End Sub)
-
-        tr2 = New Thread(Async Sub()
-                             Dim c As Socket
-                             Dim s As Socket
-                             Try
-                                 While IsMcPortForwardRunning
-                                     c = ServerSocket.Accept()
-                                     s = New Socket(SocketType.Stream, ProtocolType.Tcp)
-
-                                     s.Connect(Sip)
-                                     Dim Count As Integer = 0
-                                     While Not s.Connected
-                                         If Count <= 5 Then
-                                             Count += 1
-                                             Await Task.Delay(1000)
-                                         Else
-                                             Log("[Link] 连接到目标 MC 服务器失败")
-                                             Return
-                                         End If
-                                     End While
-                                     RunInNewThread(Sub() Forward(c, s))
-                                     RunInNewThread(Sub() Forward(s, c))
-                                 End While
-                             Catch ex As Exception
-                                 If PortForwardRetryTimes < 4 Then
-                                     Log($"[Link] Minecraft 端口转发线程异常，放弃前再尝试 {3 - PortForwardRetryTimes} 次")
-                                     McPortForward(Ip, Port, Desc, True)
-                                 Else
-                                     Log(ex, "[Link] Minecraft 端口转发线程异常", LogLevel.Msgbox)
-                                     IsMcPortForwardRunning = False
-                                 End If
-                             End Try
-                         End Sub)
+                                           s.Connect(Sip)
+                                           Dim Count As Integer = 0
+                                           While Not s.Connected
+                                               If Count <= 5 Then
+                                                   Count += 1
+                                                   Await Task.Delay(1000)
+                                               Else
+                                                   Log("[Link] 连接到目标 MC 服务器失败")
+                                                   Return
+                                               End If
+                                           End While
+                                           RunInNewThread(Sub() Forward(c, s))
+                                           RunInNewThread(Sub() Forward(s, c))
+                                       End While
+                                   Catch ex As SocketException
+                                       If Not IsMcPortForwardRunning Then Exit Sub
+                                       Log("[Link] 疑似 MC 断开与创建者的连接，再次进行广播")
+                                       StartUdpBoardcast()
+                                   Catch ex As Exception
+                                       If Not IsMcPortForwardRunning Then Exit Sub
+                                       If PortForwardRetryTimes < 4 Then
+                                           Log($"[Link] Minecraft TCP 转发线程异常，放弃前再尝试 {3 - PortForwardRetryTimes} 次")
+                                           McPortForward(remoteIp, remotePort, desc, True)
+                                       Else
+                                           Log(ex, "[Link] Minecraft TCP 转发线程异常", LogLevel.Hint)
+                                           IsMcPortForwardRunning = False
+                                       End If
+                                   End Try
+                               End Sub)
         Try
-            tr1.Start()
-            tr2.Start()
+            UdpThread.Start()
+            TcpThread.Start()
         Catch ex As Exception
             Log(ex, "[Link] 启动 MC 局域网广播失败")
             IsMcPortForwardRunning = False
         End Try
     End Sub
+    Private Sub StartUdpBoardcast()
+        Try
+            Try
+                UdpThread.Abort()
+            Catch ex As Exception
+
+            End Try
+            UdpThread.Start()
+        Catch ex As Exception
+            Log(ex, "[Link] 启动 MC 局域网广播失败")
+        End Try
+    End Sub
     Public Sub StopMcPortForward()
+        IsMcPortForwardRunning = False
         Log("[Link] 停止 MC 端口转发")
-        If tr1 IsNot Nothing Then
-            tr1.Abort()
-            tr1 = Nothing
+        If UdpThread IsNot Nothing Then
+            UdpThread.Abort()
+            UdpThread = Nothing
         End If
-        If tr2 IsNot Nothing Then
-            tr2.Abort()
-            tr2 = Nothing
+        If TcpThread IsNot Nothing Then
+            TcpThread.Abort()
+            TcpThread = Nothing
         End If
-        If ChatClient IsNot Nothing Then
-            ChatClient.Close()
-            ChatClient = Nothing
+        If BoardcastClient IsNot Nothing Then
+            BoardcastClient.Close()
+            BoardcastClient = Nothing
         End If
         If ServerSocket IsNot Nothing Then
             ServerSocket.Close()
@@ -927,7 +866,6 @@ PortRetry:
             fw_c.Close()
             fw_c = Nothing
         End If
-        IsMcPortForwardRunning = False
     End Sub
 
     Private fw_s As Socket = Nothing

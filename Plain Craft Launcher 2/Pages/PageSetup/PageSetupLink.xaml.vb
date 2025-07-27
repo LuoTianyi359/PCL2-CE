@@ -20,6 +20,7 @@
         TextLinkRelay.Text = Setup.Get("LinkRelayServer")
         ComboRelayType.SelectedIndex = Setup.Get("LinkRelayType")
         ComboServerType.SelectedIndex = Setup.Get("LinkServerType")
+        ComboProxyType.SelectedIndex = Setup.Get("LinkProxyType")
         If String.IsNullOrWhiteSpace(Setup.Get("LinkNaidRefreshToken")) Then
             CardLogged.Visibility = Visibility.Collapsed
             CardNotLogged.Visibility = Visibility.Visible
@@ -61,7 +62,7 @@
                                End While
                                RunInUi(Sub()
                                            TextUsername.Text = $"已以 {NaidProfile.Username} 的身份登录至 Natayark Network"
-                                           TextStatus.Text = $"账号状态：{If(NaidProfile.Status = 0, "正常", "异常")} / {If(NaidProfile.IsRealname, "已完成实名验证", "尚未进行实名验证")}"
+                                           TextStatus.Text = $"账号状态：{If(NaidProfile.Status = 0, "正常", "异常")}{If(NaidProfile.IsRealname, " / 已完成实名验证", If(RequiresRealname, " / 未完成实名验证", Nothing))}"
                                            CardLogged.Visibility = Visibility.Visible
                                            CardNotLogged.Visibility = Visibility.Collapsed
                                        End Sub)
@@ -91,6 +92,7 @@
         BtnRegister.Visibility = Visibility.Visible
         BtnCancel.Visibility = Visibility.Collapsed
         TextLogin.Text = "登录至 Natayark Network 以使用大厅等在线服务"
+        DisposeWebServer("oauth/NatayarkID")
         Hint("已取消登录！")
     End Sub
     Private Sub BtnLogout_Click(sender As Object, e As RoutedEventArgs) Handles BtnLogout.Click
@@ -113,6 +115,7 @@
                         FrmLinkLeft.PageChange(FormMain.PageSubType.LinkLobby)
                         FrmLinkLeft.ItemLobby.SetChecked(True, False, False)
                         FrmMain.PageChange(New FormMain.PageStackData With {.Page = FormMain.PageType.Launch})
+                        FrmLinkLobby = Nothing
                     End Sub)
             Hint("联机功能已停用！")
         End If
@@ -122,9 +125,12 @@
         Try
             Setup.Reset("LinkRelayServer")
             Setup.Reset("LinkRelayType")
+            Setup.Reset("LinkServerType")
+            Setup.Reset("LinkProxyType")
 
             Log("[Setup] 已初始化联机页设置")
             Hint("已初始化联机页设置！", HintType.Finish, False)
+            Reload()
         Catch ex As Exception
             Log(ex, "初始化联机页设置失败", LogLevel.Msgbox)
         End Try
@@ -136,7 +142,7 @@
     Private Shared Sub TextBoxChange(sender As MyTextBox, e As Object) Handles TextLinkRelay.ValidatedTextChanged
         If AniControlEnabled = 0 Then Setup.Set(sender.Tag, sender.Text)
     End Sub
-    Private Shared Sub ComboBoxChange(sender As MyComboBox, e As Object) Handles ComboRelayType.SelectionChanged
+    Private Shared Sub ComboBoxChange(sender As MyComboBox, e As Object) Handles ComboRelayType.SelectionChanged, ComboServerType.SelectionChanged, ComboProxyType.SelectionChanged
         If AniControlEnabled = 0 Then Setup.Set(sender.Tag, sender.SelectedIndex)
     End Sub
 

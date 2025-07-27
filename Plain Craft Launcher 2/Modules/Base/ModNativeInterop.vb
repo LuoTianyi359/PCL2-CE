@@ -85,7 +85,7 @@ Public Module ModNativeInterop
                     Dim realtime = watcher.RealTimeLog
                     Dim game = watcher.Version
                     Dim name = game.Name
-                    Dim version = game.Version.McVersion.ToString()
+                    Dim version = game.Version.McInstance.ToString()
                     infoList.Add(New MinecraftLog With {
                         .id = id, .name = name, .pending = pending, .realtime = realtime,
                         .state = state, .version = version})
@@ -136,19 +136,17 @@ Public Module ModNativeInterop
     End Function
 
     Private Sub AddPredefinedFunctions()
-        Rpc.AddFunction("info", AddressOf _InfoCallback)
-        Rpc.AddFunction("log", AddressOf _LogCallback)
+        RpcService.AddFunction("info", AddressOf _InfoCallback)
+        RpcService.AddFunction("log", AddressOf _LogCallback)
     End Sub
     
     Private Sub Start()
         Log("[RPC] 正在加载预设 RPC 属性")
         For Each prop In PredefinedProperties
-            Rpc.AddProperty(prop)
+            RpcService.AddProperty(prop)
         Next
         Log("[RPC] 正在加载预设 RPC 函数")
         AddPredefinedFunctions()
-        Log("[RPC] 正在初始化 Echo 服务端")
-        Rpc.Start()
     End Sub
 
     ''' <summary>

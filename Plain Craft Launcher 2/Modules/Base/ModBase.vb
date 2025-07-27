@@ -16,12 +16,12 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.12.0-beta.3" '不含分支前缀的显示用版本名
+    Public Const VersionBaseName As String = "2.12.0-beta.13" '不含分支前缀的显示用版本名
     Public Const VersionStandardCode As String = "2.12.0." & VersionBranchCode
     Public Const CommitHash As String = "native" 'Commit Hash，由 GitHub Workflow 自动替换
     Public CommitHashShort As String = If(CommitHash = "native", "native", CommitHash.Substring(0, 7)) 'Commit Hash，取前 7 位
     Public Const UpstreamVersion As String = "2.10.3" '上游版本
-    Public Const VersionCode As Integer = 385 '内部版本号
+    Public Const VersionCode As Integer = 394 '内部版本号
     '自动生成的版本信息
 #If DEBUG Then
     Public Const VersionBranchName As String = "Debug"
@@ -38,14 +38,15 @@ Public Module ModBase
     ''' 主窗口句柄。
     ''' </summary>
     Public Handle As IntPtr
+    '龙猫味石山小记: 用最不靠谱的实现写出能跑的代码 (AppDomain.CurrentDomain.SetupInformation.ApplicationBase 获取到的是当前工作目录而不是可执行文件所在目录)
     ''' <summary>
-    ''' 程序的启动路径，以“\”结尾。
+    ''' 程序可执行文件所在目录，以“\”结尾。
     ''' </summary>
-    Public Path As String = AppDomain.CurrentDomain.SetupInformation.ApplicationBase
+    Public Path As String =If(NativeInterop.ExecutableDirectory.EndsWith("\"), NativeInterop.ExecutableDirectory, NativeInterop.ExecutableDirectory & "\")
     ''' <summary>
-    ''' 包含程序名的完整路径。
+    ''' 程序可执行文件完整路径。
     ''' </summary>
-    Public PathWithName As String = Path & AppDomain.CurrentDomain.SetupInformation.ApplicationName
+    Public PathWithName As String = NativeInterop.ExecutablePath
     ''' <summary>
     ''' 程序内嵌图片文件夹路径，以“/”结尾。
     ''' </summary>
@@ -2070,37 +2071,64 @@ RetryDir:
     ''' <param name="MaxBlurCount">返回的最大模糊结果数。</param>
     ''' <param name="MinBlurSimilarity">返回结果要求的最低相似度。</param>
     Public Function Search(Of T)(Entries As List(Of SearchEntry(Of T)), Query As String, Optional MaxBlurCount As Integer = 5, Optional MinBlurSimilarity As Double = 0.1) As List(Of SearchEntry(Of T))
-        '初始化
         Dim ResultList As New List(Of SearchEntry(Of T))
-        If Not Entries.Any() Then Return ResultList
-        '进行搜索，获取相似信息
+
+        If Entries Is Nothing OrElse Not Entries.Any() Then
+            Return ResultList
+        End If
+
+        ' Preprocess query into parts
+        Dim queryParts As String() = Query.Split(New Char() {" "c}, StringSplitOptions.RemoveEmptyEntries)
+        If queryParts.Length = 0 Then
+            ResultList.AddRange(Entries)
+            Return ResultList
+        End If
+
+        ' Precompute query parts in lowercase for case-insensitive comparison
+        Dim queryPartsLower As String() = queryParts.Select(Function(q) q.ToLower()).ToArray()
+
+        ' Process each entry to compute similarity and absolute match status
         For Each Entry In Entries
             Entry.Similarity = SearchSimilarityWeighted(Entry.SearchSource, Query)
-            Entry.AbsoluteRight =
-                Query.Split(" ").All( '对于按空格分割的每一段
-                Function(QueryPart) Entry.SearchSource.Any( '若与任意一个搜索源完全匹配，则标记为完全匹配项
-                Function(Source) Source.Key.Replace(" ", "").ContainsF(QueryPart, True)))
+
+            ' Preprocess search source keys: remove spaces and convert to lowercase
+            Dim processedSources = Entry.SearchSource.Select(Function(s) s.Key.Replace(" ", "").ToLower()).ToList()
+
+            ' Check if all query parts are matched exactly by at least one source
+            Dim isAbsoluteRight As Boolean = True
+            For Each qp In queryPartsLower
+                Dim found = False
+                For Each ps In processedSources
+                    If ps.Contains(qp) Then
+                        found = True
+                        Exit For
+                    End If
+                Next
+                If Not found Then
+                    isAbsoluteRight = False
+                    Exit For
+                End If
+            Next
+            Entry.AbsoluteRight = isAbsoluteRight
         Next
-        '按照相似度进行排序
-        Entries = Entries.Sort(
-        Function(Left, Right) As Boolean
-            If Left.AbsoluteRight Xor Right.AbsoluteRight Then
-                Return Left.AbsoluteRight
-            Else
-                Return Left.Similarity > Right.Similarity
-            End If
-        End Function)
-        '返回结果
-        Dim BlurCount As Integer = 0
-        For Each Entry In Entries
+
+        ' Sort by absolute match (descending), then by similarity (descending)
+        Dim sortedEntries = Entries.OrderByDescending(Function(e) e.AbsoluteRight).ThenByDescending(Function(e) e.Similarity).ToList()
+
+        ' Build the final result list
+        Dim blurCount As Integer = 0
+        For Each Entry In sortedEntries
             If Entry.AbsoluteRight Then
-                ResultList.Add(Entry) '完全匹配，直接加入
-            Else
-                If Entry.Similarity < MinBlurSimilarity OrElse BlurCount = MaxBlurCount Then Exit For '模糊结果边界条件
                 ResultList.Add(Entry)
-                BlurCount += 1 '模糊结果计数
+            Else
+                If Entry.Similarity < MinBlurSimilarity OrElse blurCount >= MaxBlurCount Then
+                    Exit For
+                End If
+                ResultList.Add(Entry)
+                blurCount += 1
             End If
         Next
+
         Return ResultList
     End Function
 
@@ -3268,10 +3296,9 @@ Retry:
 
     End Sub
     Public Function Base64Decode(Text As String) As String
-
+        If String.IsNullOrWhiteSpace(Text) Then Return ""
         Dim decodedBytes As Byte() = Convert.FromBase64String(Text)
         Return System.Text.Encoding.UTF8.GetString(decodedBytes)
-
     End Function
     Public Function Base64Encode(Text As String) As String
         Dim bytes As Byte() = System.Text.Encoding.UTF8.GetBytes(Text)
